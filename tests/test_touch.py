@@ -245,3 +245,29 @@ def test_protocol_a_second_finger_and_missing_ids():
     )
     (gesture,) = feed(events)
     assert gesture.fingers == 2
+
+
+def test_adb_failures_become_device_errors():
+    """Pulling the cable makes adb/Airtest raise their own errors; replay must see a DeviceError."""
+    from jevagent.device import AndroidDevice
+    from jevagent.errors import DeviceError
+
+    class GoneADB:
+        def getDisplayOrientation(self):
+            raise RuntimeError("error: device 'AYYKVB1809001850' not found")
+
+        display_frames = getDisplayOrientation
+
+    device = object.__new__(AndroidDevice)  # skip __init__: no adb or phone needed
+    device.__dict__.update(
+        adb=GoneADB(),
+        _lock=__import__("threading").RLock(),
+        _orientation=None,
+        _checked_at=float("-inf"),
+        _size=(2376, 1152),
+        _touch=object(),
+        _capture=None,
+    )
+    for call in (device.frame, device.display, lambda: device.gesture([[0, 10, 10], [0.1, 10, 10]])):
+        with pytest.raises(DeviceError, match="手机可能已断开"):
+            call()

@@ -9,6 +9,7 @@ after an error.
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
@@ -38,6 +39,24 @@ logging.getLogger("airtest").setLevel(logging.WARNING)
 DISPLAY_CHECK_INTERVAL = 0.5  # seconds between orientation/size checks (one dumpsys, ~0.1 s)
 
 __all__ = ["AndroidDevice", "DeviceError", "DeviceInfo", "Interrupted", "list_devices", "resolve_adb"]
+
+
+def _stop_on_failure(action: str):
+    """Any adb/Airtest failure (e.g. the cable was pulled) becomes a DeviceError: stop, never retry."""
+
+    def wrap(method):
+        @functools.wraps(method)
+        def call(*args, **kwargs):
+            try:
+                return method(*args, **kwargs)
+            except (DeviceError, Interrupted, KeyboardInterrupt):
+                raise
+            except Exception as exc:
+                raise DeviceError(f"{action}失败，手机可能已断开: {exc}") from exc
+
+        return call
+
+    return wrap
 
 
 @dataclass(frozen=True)
@@ -183,6 +202,7 @@ class AndroidDevice:
         self.last_frame_seconds = 0.0
 
     # -- reading ---------------------------------------------------------------------------
+    @_stop_on_failure("读取屏幕方向")
     def display(self) -> tuple[tuple[int, int], int]:
         """Natural (portrait) display size and current rotation 0-3."""
         frames = self.adb.display_frames()
@@ -199,6 +219,7 @@ class AndroidDevice:
         assert self._size is not None
         return self._size
 
+    @_stop_on_failure("截图")
     def frame(self) -> np.ndarray:
         """Latest screen as a BGR array; stops on rotation or resolution changes."""
         with self._lock:
@@ -230,6 +251,7 @@ class AndroidDevice:
             self._size, self._orientation = size, orientation
             return frame
 
+    @_stop_on_failure("读取触摸屏")
     def touchscreen(self) -> TouchScreen:
         text = self.adb.cmd(["shell", "getevent", "-p"])
         screen = pick_touchscreen(parse_input_devices(text))
@@ -252,6 +274,7 @@ class AndroidDevice:
         )
 
     # -- input -----------------------------------------------------------------------------
+    @_stop_on_failure("启动触摸服务")
     def prepare_input(self) -> str:
         """Start the touch service before replaying, so the first gesture is not delayed."""
         with self._lock:
@@ -280,6 +303,7 @@ class AndroidDevice:
             raise DeviceError(f"触摸初始化失败 ({method}): {exc}") from exc
         self._touch, self.touch_method, self._natural = touch, method, (info["width"], info["height"])
 
+    @_stop_on_failure("触摸")
     def gesture(self, points: Sequence[Sequence[float]], stop: threading.Event | None = None) -> None:
         """Press at points[0], follow the path with its timing, release. points: (t, x, y)."""
         with self._lock:
