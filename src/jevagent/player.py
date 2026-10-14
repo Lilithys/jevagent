@@ -22,7 +22,16 @@ import numpy as np
 from jevagent.errors import DeviceError, Interrupted
 from jevagent.flow import MATCH_THRESHOLD, RETRY_TAPS, RETRY_WAIT, Flow, Step
 from jevagent.recorder import save_jpeg
-from jevagent.vision import SAME_SCREEN, Anchor, Match, find_anchor, make_anchor, screen_similarity, to_work
+from jevagent.vision import (
+    ANCHOR_SIDE,
+    SAME_SCREEN,
+    Anchor,
+    Match,
+    find_anchor,
+    make_anchor,
+    screen_similarity,
+    to_work,
+)
 
 STATUS = {"success": "成功", "failed": "失败", "stopped": "已停止", "error": "出错", "running": "未完成"}
 POLL = 0.05  # pause between frames while waiting (a frame itself takes ~0.1 s)
@@ -217,7 +226,8 @@ class Player:
                     f"{timeout:.0f}s 内没有出现录制时触点处的画面"
                     f"（最高匹配 {best:.2f}，需要 {step.threshold_value:.2f}）"
                 )
-            outcome.shift = [round(v, 1) for v in match.shift_in(size)]
+            if step.tap_follows_check(min(self.flow.size), ANCHOR_SIDE):
+                outcome.shift = [round(v, 1) for v in match.shift_in(size)]
         elif index == 0:
             same, similarity = self._wait_screen(self._image(step.image), step.timeout_for(index))
             outcome.score = round(similarity, 3)

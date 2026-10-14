@@ -278,3 +278,16 @@ def test_optional_step_still_fails_when_neither_screen_appears(recorded, screens
     phone = FakePhone(screens, "home", clock, routes)
     result, _ = play(flow, folder, phone, clock)
     assert result.status == "failed" and "第 3 步" in result.reason
+
+
+def test_tap_does_not_follow_a_distant_check_point(recorded, screens):
+    flow, folder = recorded
+    flow.steps[1].look = list(centre("shop", 2))  # check BACK (top left), tap GIFT (550 px away)
+    moved_back = screens["shop"].copy()
+    moved_back[0:300, 0:400] = make_screen("shop", 2, shift=(40, 25))[0:300, 0:400]  # only BACK moved
+    clock = FakeClock()
+    phone = FakePhone({**screens, "shop": moved_back}, "home", clock, ROUTES)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success", result.reason
+    assert phone.gestures[1][0][1:] == list(centre("shop", 1))  # GIFT tapped where it was recorded
+    assert result.steps[1].shift == [0.0, 0.0]

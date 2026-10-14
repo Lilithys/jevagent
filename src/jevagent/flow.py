@@ -63,6 +63,17 @@ class Step:
     def check_point(self) -> tuple[float, float]:
         return tuple(self.look) if self.look else tuple(self.points[0][1:])
 
+    def tap_follows_check(self, short_side: float, anchor_side: float) -> bool:
+        """Move the gesture with the matched patch only if both are on the same element.
+
+        A look point far from the tap (e.g. the stage card's dog button while tapping the HUD's
+        chest icon) can shift for its own reasons; the tap then stays where it was recorded.
+        """
+        if not self.look:
+            return True
+        (lx, ly), (tx, ty) = self.look, self.points[0][1:]
+        return math.hypot(lx - tx, ly - ty) <= anchor_side * short_side
+
     @property
     def threshold_value(self) -> float:
         return MATCH_THRESHOLD if self.threshold is None else self.threshold
