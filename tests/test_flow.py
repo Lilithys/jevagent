@@ -97,3 +97,12 @@ def test_threshold_can_be_reset_to_default():
     assert flow.steps[0].threshold_value == 0.75
     edit(flow, [], ["1.threshold=auto"])
     assert flow.steps[0].threshold is None
+
+
+def test_a_one_minute_battle_gets_a_long_enough_wait():
+    battle = Step(points=[[0.0, 1, 1], [0.1, 1, 1]], gap=70.0, image="x.jpg")  # tap ✕ after ~70 s of fighting
+    assert battle.timeout_for(1) == 140.0
+    assert Step(points=[[0.0, 1, 1], [0.1, 1, 1]], gap=400.0, image="x.jpg").timeout_for(1) == 600.0
+    flow = make_flow()
+    edit(flow, [], ["1.timeout=600"])
+    assert flow.steps[0].timeout_for(0) == 600.0
