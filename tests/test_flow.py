@@ -161,3 +161,9 @@ def test_end_look_edit():
     assert flow.end_look is None
     with pytest.raises(FlowError):
         edit(flow, [], ["end_look=9999,1"])
+
+
+def test_optional_edit():
+    flow = make_flow()
+    edit(flow, [], ["2.optional=on"])
+    assert flow.steps[1].optional

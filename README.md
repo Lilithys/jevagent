@@ -77,6 +77,7 @@ uv run jevagent edit 名称 --set 1.threshold=0.7    # 这一步要求更像（�
 uv run jevagent edit 名称 --set 1.label=打开商店
 uv run jevagent edit 名称 --set end_check=off      # 不检查结束画面
 uv run jevagent edit 名称 --set end_look=1775,1052  # 结束时只看这一处（3D 地图每次取景不同时，看固定按钮）
+uv run jevagent edit 名称 --set 2.optional=on      # 可选步骤：画面出现就做，下一步的画面先出现并停留 3 秒就跳过
 ```
 
 只想改后半段时不用整段重录：`uv run jevagent record 名称 --from 7` 保留前 6 步，从第 7 步开始重录并替换后面的步骤和结束画面（手机先停在第 6 步刚做完时的画面）。

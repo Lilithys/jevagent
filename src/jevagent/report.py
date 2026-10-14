@@ -97,6 +97,8 @@ def _settings(step: Step, index: int) -> str:
         check = f'<span class="tag ok">检查画面 ≥{step.threshold_value:.2f}</span>'
         if step.until_next:
             check += f' <span class="tag ok">没反应再点（最多 {RETRY_TAPS} 次）</span>'
+        if step.optional:
+            check += ' <span class="tag warn">可选：没出现就跳过</span>'
     elif step.until_next:
         check = f'<span class="tag ok">点到下一画面出现</span> <span class="small">空白处，最多点 {RETRY_TAPS} 次</span>'
     else:
@@ -180,9 +182,9 @@ def write_run_report(flow: Flow, folder: Path, run_dir: Path, run: dict) -> Path
         step = flow.steps[n - 1] if n <= len(flow.steps) else None
         name = html.escape(step.label or step.describe()) if step else "?"
         score = "" if item.get("score") is None else f"{item['score']:.2f}"
-        mark = "✓" if item["status"] == "done" else "✗"
+        mark = {"done": "✓", "skipped": "↷"}.get(item["status"], "✗")
         rows.append(
-            f'<tr><td>{n}</td><td>{name}</td><td class="{"ok" if mark == "✓" else "bad"}">{mark}</td>'
+            f'<tr><td>{n}</td><td>{name}</td><td class="{"bad" if mark == "✗" else "ok"}">{mark}</td>'
             f"<td>{score}</td><td>{item.get('waited', 0):.1f}s</td>"
             f"<td>{html.escape(item.get('error', ''))}</td></tr>"
         )

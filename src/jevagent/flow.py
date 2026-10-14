@@ -55,6 +55,9 @@ class Step:
     # Check the patch around this point instead of the tap point, e.g. an icon above a changing
     # count, or the number a dialog shows before tapping its confirm button. Recorded-frame pixels.
     look: list[float] | None = None
+    # Optional screen (e.g. a reward popup that only shows on some rounds): do the step if its
+    # screen appears; skip it if the next step's screen shows up first and stays.
+    optional: bool = False
 
     @property
     def check_point(self) -> tuple[float, float]:
@@ -184,6 +187,7 @@ _STEP_FIELDS = {
     "label": str,
     "check": bool,
     "until_next": bool,
+    "optional": bool,
     "delay": float,
     "timeout": float,
     "threshold": float,

@@ -30,6 +30,7 @@ STABLE = 3  # work pixels the anchor may move between the frames that confirm it
 CONFIRM = 2  # consecutive matching frames needed
 CONFIRM_LONG = 3  # ...after LONG_WAIT: long waits over busy scenes (battles) invite look-alikes
 LONG_WAIT = 20.0
+SKIP_SETTLE = 3.0  # an optional step is skipped once the next step's screen has stayed this long
 
 
 @dataclass
@@ -115,13 +116,25 @@ class Player:
         self.last_frame = self.device.frame()
         return self.last_frame
 
-    def _wait_anchor(self, anchor: Anchor, threshold: float, timeout: float) -> tuple[Match | None, float]:
+    def _wait_anchor(
+        self,
+        anchor: Anchor,
+        threshold: float,
+        timeout: float,
+        skip: Callable[[np.ndarray], bool] | None = None,
+    ) -> tuple[Match | None, float, bool]:
+        """Wait for a stable match; returns (match or None, best score, skipped).
+
+        With `skip`, give up early (skipped=True) once that screen has been showing for SKIP_SETTLE.
+        """
         started = self.clock()
         deadline = started + timeout
         streak: list[Match] = []
         best = 0.0
+        skip_since: float | None = None
         while True:
-            match = find_anchor(to_work(self._frame()), anchor)
+            frame = self._frame()
+            match = find_anchor(to_work(frame), anchor)
             best = max(best, match.score)
             if match.score < threshold:
                 streak = []
@@ -131,9 +144,15 @@ class Player:
                 streak = [match]
             needed = CONFIRM_LONG if self.clock() - started > LONG_WAIT else CONFIRM
             if len(streak) >= needed:
-                return match, best
+                return match, best, False
+            if skip is not None and not streak and skip(frame):
+                skip_since = self.clock() if skip_since is None else skip_since
+                if self.clock() - skip_since >= SKIP_SETTLE:
+                    return None, best, True
+            elif skip is not None:
+                skip_since = None
             if self.clock() >= deadline:
-                return None, best
+                return None, best, False
             self._sleep(POLL)
 
     def _wait_screen(self, reference: np.ndarray, timeout: float) -> tuple[bool, float]:
@@ -187,8 +206,12 @@ class Player:
         if step.check:
             timeout = step.timeout_for(index)
             anchor = make_anchor(self._image(step.image), step.check_point)
-            match, best = self._wait_anchor(anchor, step.threshold_value, timeout)
+            skip = self._next_screen(index) if step.optional else None
+            match, best, skipped = self._wait_anchor(anchor, step.threshold_value, timeout, skip)
             outcome.score = round(match.score if match else best, 3)
+            if skipped:
+                outcome.status = "skipped"
+                return ""
             if match is None:
                 return (
                     f"{timeout:.0f}s 内没有出现录制时触点处的画面"
@@ -251,6 +274,12 @@ class Player:
                 outcome = StepResult(number, "done")
                 error = self._check(step, i, outcome, (width, height))
                 outcome.waited = round(self.clock() - begun, 2)
+                if outcome.status == "skipped":
+                    result.steps.append(outcome)
+                    self.log(
+                        f"[{number}/{total}] ↷ 跳过 {step.describe()}：没出现（可选），下一步的画面已就绪"
+                    )
+                    continue
                 if not error:
                     dx, dy = outcome.shift
                     points = [[t, x * scale + dx, y * scale + dy] for t, x, y in step.points]
@@ -276,7 +305,7 @@ class Player:
                 if flow.end_check and flow.end_image:
                     if flow.end_look:
                         end = make_anchor(self._image(flow.end_image), tuple(flow.end_look))
-                        match, similarity = self._wait_anchor(end, MATCH_THRESHOLD, flow.end_timeout())
+                        match, similarity, _ = self._wait_anchor(end, MATCH_THRESHOLD, flow.end_timeout())
                         same = match is not None
                     else:
                         same, similarity = self._wait_screen(self._image(flow.end_image), flow.end_timeout())

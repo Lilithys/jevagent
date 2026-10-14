@@ -249,3 +249,32 @@ def test_resume_from_a_later_step(recorded, screens):
     result = player.run(new_run_dir(folder))
     assert result.status == "success" and [s.step for s in result.steps] == [2, 3, 4]
     assert len(phone.gestures) == 3
+
+
+def test_optional_step_is_done_when_its_screen_appears_and_skipped_otherwise(recorded, screens):
+    flow, folder = recorded
+    flow.steps[2].optional = True  # the popup's OK: only some rounds show the popup
+
+    clock = FakeClock()
+    phone = FakePhone(screens, "home", clock, ROUTES)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success" and [s.status for s in result.steps] == ["done"] * 4
+
+    clock = FakeClock()
+    no_popup = {k: v for k, v in ROUTES.items() if k != ("shop", 1)}  # GIFT shows no popup this time
+    phone = FakePhone(screens, "home", clock, no_popup)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success", result.reason
+    assert [s.status for s in result.steps] == ["done", "done", "skipped", "done"]
+    assert len(phone.gestures) == 3  # nothing was tapped for the skipped step
+    assert result.steps[2].waited >= 3.0  # the next screen had to stay for SKIP_SETTLE first
+
+
+def test_optional_step_still_fails_when_neither_screen_appears(recorded, screens):
+    flow, folder = recorded
+    flow.steps[2].optional = True
+    clock = FakeClock()
+    routes = {**ROUTES, ("shop", 1): ("home", 0.5)}  # GIFT leads somewhere unexpected
+    phone = FakePhone(screens, "home", clock, routes)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "failed" and "第 3 步" in result.reason
