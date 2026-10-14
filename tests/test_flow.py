@@ -149,3 +149,13 @@ def test_re_recorded_tail_replaces_the_steps_from_n_on():
         splice(make_flow(), Flow(name="x", size=[1152, 2376], steps=tail.steps), 2)
     with pytest.raises(FlowError):
         splice(make_flow(), tail, 5)
+
+
+def test_end_look_edit():
+    flow = make_flow()
+    edit(flow, [], ["end_look=1775,1052"])
+    assert flow.end_look == [1775.0, 1052.0]
+    edit(flow, [], ["end_look=auto"])
+    assert flow.end_look is None
+    with pytest.raises(FlowError):
+        edit(flow, [], ["end_look=9999,1"])

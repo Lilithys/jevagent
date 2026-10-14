@@ -78,7 +78,8 @@ def print_steps(flow: flows.Flow) -> None:
             f"  {i + 1:>2}. {label}{step.describe():<34} 间隔 {step.gap:>5.1f}s  "
             f"先等 {step.delay_for(i):.1f}s{timeout}  {check}"
         )
-    end = f"要求一致（最多等 {flow.end_timeout():.0f}s）" if flow.end_check else "不检查"
+    where = f"看 ({flow.end_look[0]:.0f},{flow.end_look[1]:.0f}) 处" if flow.end_look else "整屏"
+    end = f"要求一致（{where}，最多等 {flow.end_timeout():.0f}s）" if flow.end_check else "不检查"
     print(f"  结束画面：{end}")
 
 

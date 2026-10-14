@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 
 from jevagent.errors import DeviceError, Interrupted
-from jevagent.flow import RETRY_TAPS, RETRY_WAIT, Flow, Step
+from jevagent.flow import MATCH_THRESHOLD, RETRY_TAPS, RETRY_WAIT, Flow, Step
 from jevagent.recorder import save_jpeg
 from jevagent.vision import SAME_SCREEN, Anchor, Match, find_anchor, make_anchor, screen_similarity, to_work
 
@@ -152,6 +152,9 @@ class Player:
             anchor = make_anchor(self._image(following.image), following.check_point)
             return lambda frame: find_anchor(to_work(frame), anchor).score >= following.threshold_value
         if self.flow.end_check and self.flow.end_image:
+            if self.flow.end_look:
+                end = make_anchor(self._image(self.flow.end_image), tuple(self.flow.end_look))
+                return lambda frame: find_anchor(to_work(frame), end).score >= MATCH_THRESHOLD
             reference = self._image(self.flow.end_image)
             return lambda frame: screen_similarity(frame, reference) >= SAME_SCREEN
         return None
@@ -254,7 +257,12 @@ class Player:
                 )
             else:
                 if flow.end_check and flow.end_image:
-                    same, similarity = self._wait_screen(self._image(flow.end_image), flow.end_timeout())
+                    if flow.end_look:
+                        end = make_anchor(self._image(flow.end_image), tuple(flow.end_look))
+                        match, similarity = self._wait_anchor(end, MATCH_THRESHOLD, flow.end_timeout())
+                        same = match is not None
+                    else:
+                        same, similarity = self._wait_screen(self._image(flow.end_image), flow.end_timeout())
                     result.end_score = round(similarity, 3)
                     if same:
                         result.status, result.reason = (

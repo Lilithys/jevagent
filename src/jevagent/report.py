@@ -78,6 +78,20 @@ def _overlay(step: Step, size: list[int]) -> str:
     return f'<svg viewBox="0 0 {w} {h}" preserveAspectRatio="none">{"".join(parts)}</svg>'
 
 
+def _end_box(flow: Flow) -> str:
+    if not (flow.end_check and flow.end_look):
+        return ""
+    w, h = flow.size
+    side, r = ANCHOR_SIDE * min(w, h), max(min(w, h) * 0.03, 6)
+    x0 = min(max(flow.end_look[0] - side / 2, 0), w - side)
+    y0 = min(max(flow.end_look[1] - side / 2, 0), h - side)
+    return (
+        f'<svg viewBox="0 0 {w} {h}" preserveAspectRatio="none"><rect x="{x0:.0f}" y="{y0:.0f}" '
+        f'width="{side:.0f}" height="{side:.0f}" fill="none" stroke="#0a84ff" stroke-width="{r / 3:.1f}" '
+        f'stroke-dasharray="{r:.0f} {r / 2:.0f}"/></svg>'
+    )
+
+
 def _settings(step: Step, index: int) -> str:
     if step.check:
         check = f'<span class="tag ok">检查画面 ≥{step.threshold_value:.2f}</span>'
@@ -105,13 +119,15 @@ def write_flow_report(flow: Flow, folder: Path) -> Path:
             f"{_settings(step, i)}</div></div>"
         )
     if flow.end_image:
+        where = f"蓝框处（{flow.end_look[0]:.0f},{flow.end_look[1]:.0f}）" if flow.end_look else "画面"
         end_note = (
-            f"回放结束后最多等 {flow.end_timeout():.0f}s，要求画面与此一致"
+            f"回放结束后最多等 {flow.end_timeout():.0f}s，要求{where}与此一致"
             if flow.end_check
             else "不检查结束画面"
         )
         cards.append(
-            f'<div class="card"><div class="shot"><img src="{flow.end_image}" loading="lazy" alt=""></div>'
+            f'<div class="card"><div class="shot"><img src="{flow.end_image}" loading="lazy" alt="">'
+            f"{_end_box(flow)}</div>"
             f'<div class="body"><div class="title">结束画面</div><div class="small">{end_note}</div></div></div>'
         )
     rows = []

@@ -194,3 +194,19 @@ def test_step_can_check_one_spot_and_tap_another(recorded, screens):
     phone = FakePhone({**screens, "shop": no_back}, "home", clock, ROUTES)
     result, _ = play(flow, folder, phone, clock)
     assert result.status == "failed" and "第 2 步" in result.reason and len(phone.gestures) == 1
+
+
+def test_end_can_be_confirmed_by_one_spot(recorded, screens):
+    flow, folder = recorded
+    reframed = screens["popup"].copy()  # the "map" is framed differently this visit...
+    reframed[80:340, 2040:2376] = screens["home"][80:340, 2040:2376]  # ...but the SHOP button is unchanged
+    flow.end_look = list(centre("home", 0))  # but the SHOP button is where it was
+    clock = FakeClock()
+    phone = FakePhone({**screens, "home": reframed}, "home", clock, ROUTES)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success" and result.end_score >= 0.6
+
+    flow.end_look = None  # whole-screen comparison fails on the reframed screen
+    clock = FakeClock()
+    phone = FakePhone({**screens, "home": reframed}, "home", clock, ROUTES)
+    assert play(flow, folder, phone, clock)[0].status == "failed"

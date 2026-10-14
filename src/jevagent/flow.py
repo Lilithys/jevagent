@@ -106,6 +106,9 @@ class Flow:
     end_image: str | None = None
     end_gap: float = 0.0  # seconds between the last gesture and stopping the recording
     end_check: bool = True  # require the final screen to match end.jpg
+    # Confirm the end by the patch around this point of end.jpg instead of the whole screen,
+    # e.g. a fixed button on a screen whose 3D map is framed differently each visit.
+    end_look: list[float] | None = None
     device: dict = field(default_factory=dict)
     created: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     revision: int = 1
@@ -226,14 +229,23 @@ def edit(flow: Flow, delete: list[int], assignments: list[str]) -> list[str]:
     for item in assignments:
         target, sep, raw = item.partition("=")
         if not sep:
-            raise FlowError(f"格式应为 步骤.字段=值 或 end_check=on/off: {item}")
-        if target == "end_check":
-            changes.append((flow, "end_check", _value(bool, raw)))
-            log.append(f"end_check = {raw}")
+            raise FlowError(f"格式应为 步骤.字段=值、end_check=on/off 或 end_look=x,y: {item}")
+        if target in ("end_check", "end_look"):
+            value = _value(bool if target == "end_check" else "point", raw)
+            if (
+                target == "end_look"
+                and value is not None
+                and not (0 <= value[0] < flow.size[0] and 0 <= value[1] < flow.size[1])
+            ):
+                raise FlowError(f"end_look 坐标需在画面 {flow.size[0]}x{flow.size[1]} 之内: {raw}")
+            changes.append((flow, target, value))
+            log.append(f"{target} = {raw}")
             continue
         number, dot, name = target.partition(".")
         if not dot or not number.isdigit() or name not in _STEP_FIELDS:
-            raise FlowError(f"未知字段 {target}；可用: 步骤号.{{{','.join(_STEP_FIELDS)}}}, end_check")
+            raise FlowError(
+                f"未知字段 {target}；可用: 步骤号.{{{','.join(_STEP_FIELDS)}}}, end_check, end_look"
+            )
         index = int(number) - 1
         if not 0 <= index < count:
             raise FlowError(f"没有第 {number} 步（共 {count} 步）")
