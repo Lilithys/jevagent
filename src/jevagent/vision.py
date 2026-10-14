@@ -23,7 +23,9 @@ import numpy as np
 
 WORK_SHORT = 576
 ANCHOR_SIDE = 0.10  # anchor edge, as a fraction of the short side (~115 px on a 1152 px tall screen)
-SEARCH_RADIUS = 0.25  # how far the anchor may have moved, fraction of the short side
+# How far an anchor may have moved, fraction of the short side (~115 px on the HONOR). Real moves seen:
+# up to 33 px. 0.25 let a 9-minute auto-battle produce a 0.64 look-alike 330 px away.
+SEARCH_RADIUS = 0.10
 MIN_TEXTURE = 6.0  # mean edge strength below this: a flat or smoothly shaded patch (real buttons: 30-80)
 SAME_SCREEN = 0.6  # fraction of grid cells that must correlate for "same screen"
 

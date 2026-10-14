@@ -219,6 +219,9 @@ def cmd_play(args: argparse.Namespace) -> int:
 
     folder = flow_dir(args.name)
     flow = flows.load(folder)
+    if not 1 <= args.start <= len(flow.steps):
+        print(f"--from 需在 1–{len(flow.steps)} 之间。")
+        return 2
     device = connect(args)
     stop = threading.Event()
     results = []
@@ -237,7 +240,12 @@ def cmd_play(args: argparse.Namespace) -> int:
             if args.times > 1:
                 print(f"—— 第 {k + 1}/{args.times} 次 ——", flush=True)
             run_dir = new_run_dir(folder)
-            result = Player(device, flow, folder, stop=stop, log=lambda s: print(s, flush=True)).run(run_dir)
+            first = args.start if k == 0 else 1  # --from applies to the first run only
+            if first > 1:
+                print(f"从第 {first} 步开始（前 {first - 1} 步已手动完成）", flush=True)
+            result = Player(
+                device, flow, folder, stop=stop, log=lambda s: print(s, flush=True), start=first
+            ).run(run_dir)
             report = write_run_report(flow, folder, run_dir, asdict(result))
             results.append(result)
             print(f"\n结果：{STATUS[result.status]}。{result.reason}\n报告：{report}\n", flush=True)
@@ -371,6 +379,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("play", help="回放流程")
     p.add_argument("name")
     p.add_argument("--times", type=int, default=1, help="连续回放次数（流程须结束在起始画面），失败即停")
+    p.add_argument(
+        "--from", dest="start", type=int, default=1, metavar="N", help="从第 N 步开始（前面的已手动做完）"
+    )
     device_args(p)
     p = sub.add_parser("loop", help="把几个流程连起来按顺序回放，循环多轮")
     p.add_argument("names", nargs="+", metavar="流程", help="按顺序回放的流程")

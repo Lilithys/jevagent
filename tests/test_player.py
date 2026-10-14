@@ -2,6 +2,7 @@ import json
 import threading
 
 import cv2
+import numpy as np
 import pytest
 from fakes import PLAN, ROUTES, FakeClock, FakePhone, centre, make_screen
 
@@ -210,3 +211,41 @@ def test_end_can_be_confirmed_by_one_spot(recorded, screens):
     clock = FakeClock()
     phone = FakePhone({**screens, "home": reframed}, "home", clock, ROUTES)
     assert play(flow, folder, phone, clock)[0].status == "failed"
+
+
+class BattlePhone(FakePhone):
+    """Shows a chaotic 'battle' screen; the expected screen flashes up for `flash` frames at 30 s."""
+
+    def __init__(self, *args, flash: int, target: str, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.flash, self.target, self.frames = flash, target, 0
+
+    def frame(self):
+        image = super().frame()
+        if self.clock.now - 1000 >= 30 and self.flash > 0:
+            self.flash -= 1
+            return self.screens[self.target].copy()
+        rng = np.random.default_rng(int(self.clock.now * 1000))
+        return rng.integers(0, 255, image.shape, dtype=np.uint8)
+
+
+def test_after_a_long_wait_a_brief_look_alike_is_not_enough(recorded, screens):
+    flow, folder = recorded
+    flow.steps = flow.steps[:1]  # tap SHOP, after waiting through a long battle
+    flow.steps[0].timeout = 60
+    flow.end_check = False
+    for flash, expected in ((2, "failed"), (3, "success")):
+        clock = FakeClock()
+        phone = BattlePhone(screens, "home", clock, flash=flash, target="home")
+        result, _ = play(flow, folder, phone, clock)
+        assert result.status == expected, (flash, result.reason)
+
+
+def test_resume_from_a_later_step(recorded, screens):
+    flow, folder = recorded
+    clock = FakeClock()
+    phone = FakePhone(screens, "shop", clock, ROUTES)  # step 1 already done by hand
+    player = Player(phone, flow, folder, clock=clock, sleep=clock.sleep, log=lambda s: None, start=2)
+    result = player.run(new_run_dir(folder))
+    assert result.status == "success" and [s.step for s in result.steps] == [2, 3, 4]
+    assert len(phone.gestures) == 3

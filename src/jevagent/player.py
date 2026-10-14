@@ -26,7 +26,10 @@ from jevagent.vision import SAME_SCREEN, Anchor, Match, find_anchor, make_anchor
 
 STATUS = {"success": "成功", "failed": "失败", "stopped": "已停止", "error": "出错", "running": "未完成"}
 POLL = 0.05  # pause between frames while waiting (a frame itself takes ~0.1 s)
-STABLE = 3  # work pixels the anchor may move between the two frames that confirm it
+STABLE = 3  # work pixels the anchor may move between the frames that confirm it
+CONFIRM = 2  # consecutive matching frames needed
+CONFIRM_LONG = 3  # ...after LONG_WAIT: long waits over busy scenes (battles) invite look-alikes
+LONG_WAIT = 20.0
 
 
 @dataclass
@@ -83,8 +86,10 @@ class Player:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] | None = None,
         stop: threading.Event | None = None,
+        start: int = 1,
     ) -> None:
         self.device, self.flow, self.folder, self.log, self.clock = device, flow, folder, log, clock
+        self.start = start  # 1-based step to begin with (resume after doing the earlier steps by hand)
         self.stop = stop or threading.Event()
         self._sleep_impl = sleep
         self._images: dict[str, np.ndarray] = {}
@@ -111,20 +116,22 @@ class Player:
         return self.last_frame
 
     def _wait_anchor(self, anchor: Anchor, threshold: float, timeout: float) -> tuple[Match | None, float]:
-        deadline = self.clock() + timeout
-        previous: Match | None = None
+        started = self.clock()
+        deadline = started + timeout
+        streak: list[Match] = []
         best = 0.0
         while True:
             match = find_anchor(to_work(self._frame()), anchor)
             best = max(best, match.score)
-            if match.score >= threshold:
-                if previous is not None and all(
-                    abs(a - b) <= STABLE for a, b in zip(previous.shift, match.shift)
-                ):
-                    return match, best
-                previous = match
+            if match.score < threshold:
+                streak = []
+            elif streak and all(abs(a - b) <= STABLE for a, b in zip(streak[-1].shift, match.shift)):
+                streak.append(match)
             else:
-                previous = None
+                streak = [match]
+            needed = CONFIRM_LONG if self.clock() - started > LONG_WAIT else CONFIRM
+            if len(streak) >= needed:
+                return match, best
             if self.clock() >= deadline:
                 return None, best
             self._sleep(POLL)
@@ -236,6 +243,8 @@ class Player:
                 )
             scale = width / rec_w
             for i, step in enumerate(flow.steps):
+                if i < self.start - 1:
+                    continue
                 number = i + 1
                 begun = self.clock()
                 self._sleep(step.delay_for(i))
