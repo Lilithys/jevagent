@@ -70,6 +70,10 @@ def print_steps(flow: flows.Flow) -> None:
                 check += f"，没反应再点（最多 {flows.RETRY_TAPS} 次）"
             if step.optional:
                 check += "，可选：没出现就跳过"
+            if step.react:
+                check += "，应对：出现就做（可多次）"
+        elif step.react:
+            check = "应对：长时间没有可识别画面时轻点一下（最多 3 次）"
         elif step.until_next:
             check = f"点空白处，点到下一画面出现（最多 {flows.RETRY_TAPS} 次）"
         else:
@@ -403,7 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--set",
         action="append",
         metavar="N.字段=值",
-        help="字段: label, check(on/off), until_next(on/off), optional(on/off), delay, timeout(秒), threshold(默认 0.6), look(x,y：检查这里而不是触点)，填 auto 恢复默认；或 end_check=on/off",
+        help="字段: label, check(on/off), until_next(on/off), optional(on/off), react(on/off), delay, timeout(秒), threshold(默认 0.6), look(x,y：检查这里而不是触点)，填 auto 恢复默认；或 end_check=on/off",
     )
     return parser
 

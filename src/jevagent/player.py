@@ -40,6 +40,10 @@ CONFIRM = 2  # consecutive matching frames needed
 CONFIRM_LONG = 3  # ...after LONG_WAIT: long waits over busy scenes (battles) invite look-alikes
 LONG_WAIT = 20.0
 SKIP_SETTLE = 3.0  # an optional step is skipped once the next step's screen has stayed this long
+REACT_SETTLE = 2.0  # after a react step fires, let the screen change (recorded cutscene taps: 1.3-3 s apart)
+REACT_MAX = 15  # react firings per block before giving up
+NUDGE_AFTER = 6.0  # react block: seconds with nothing recognisable before a nudge tap
+NUDGE_MAX = 3
 
 
 @dataclass
@@ -262,6 +266,74 @@ class Player:
             outcome.taps += 1
         return f"点了 {outcome.taps} 次，等了 {RETRY_WAIT * RETRY_TAPS:.0f}s，下一画面仍未出现"
 
+    def _react(self, first: int, last: int, size: tuple[int, int], scale: float, result: RunResult) -> str:
+        """Run react steps first..last (0-based) until the screen after the block shows up."""
+        steps, total = self.flow.steps, len(self.flow.steps)
+        goal = self._next_screen(last)
+        if goal is None:
+            return "应对步骤之后的一步需要检查画面（或流程有结束画面），否则不知道何时结束"
+        block = range(first, last + 1)
+        handlers = [
+            (k, make_anchor(self._image(steps[k].image), steps[k].check_point))
+            for k in block
+            if steps[k].check
+        ]
+        nudges = [k for k in block if not steps[k].check]
+        patience = max(steps[k].timeout_for(k) for k in block)
+        progress_at = self.clock()
+        fired = nudged = 0
+        seen: object = None
+        streak = 0
+        while True:
+            frame = self._frame()
+            work = to_work(frame)
+            key: object = "goal" if goal(frame) else None
+            match = None
+            if key is None:
+                for k, anchor in handlers:
+                    candidate = find_anchor(work, anchor)
+                    if candidate.score >= steps[k].threshold_value:
+                        key, match = k, candidate
+                        break
+            streak = streak + 1 if key is not None and key == seen else (1 if key is not None else 0)
+            seen = key
+            if key == "goal" and streak >= CONFIRM:
+                return ""
+            nudge = (
+                key is None
+                and nudges
+                and fired
+                and nudged < NUDGE_MAX
+                and self.clock() - progress_at >= NUDGE_AFTER
+            )
+            if (key is not None and key != "goal" and streak >= CONFIRM) or nudge:
+                if fired + nudged >= REACT_MAX:
+                    return f"应对步骤已执行 {REACT_MAX} 次，画面仍未进入下一步"
+                k = nudges[0] if nudge else key
+                step = steps[k]
+                dx, dy = (0.0, 0.0)
+                if match is not None and step.tap_follows_check(min(self.flow.size), ANCHOR_SIDE):
+                    dx, dy = match.shift_in(size)
+                self.device.gesture(
+                    [[t, x * scale + dx, y * scale + dy] for t, x, y in step.points], self.stop
+                )
+                score = None if match is None else round(match.score, 3)
+                result.steps.append(
+                    StepResult(k + 1, "done", score, taps=1, shift=[round(dx, 1), round(dy, 1)])
+                )
+                why = "没有可识别的画面，轻点一下继续" if nudge else f"画面出现，应对（匹配 {score:.2f}）"
+                self.log(f"[{k + 1}/{total}] ↻ {step.describe()}  {why}")
+                if nudge:
+                    nudged += 1
+                else:
+                    fired += 1
+                progress_at, seen, streak = self.clock(), None, 0
+                self._sleep(REACT_SETTLE)
+                continue
+            if self.clock() - progress_at >= patience:
+                return f"{patience:.0f}s 内既没有可应对的画面，也没有进入下一步"
+            self._sleep(POLL)
+
     def run(self, run_dir: Path) -> RunResult:
         flow = self.flow
         result = RunResult(flow.name, flow.revision, datetime.now().isoformat(timespec="seconds"))
@@ -275,10 +347,24 @@ class Player:
                     f"当前画面 {width}x{height} 与录制时 {rec_w}x{rec_h} 比例不同（横竖屏?），无法回放"
                 )
             scale = width / rec_w
-            for i, step in enumerate(flow.steps):
-                if i < self.start - 1:
-                    continue
+            i = self.start - 1
+            while i < total:
+                step = flow.steps[i]
                 number = i + 1
+                if step.react:
+                    last = i
+                    while last + 1 < total and flow.steps[last + 1].react:
+                        last += 1
+                    error = self._react(i, last, (width, height), scale, result)
+                    if error:
+                        result.status, result.reason = (
+                            "failed",
+                            f"第 {number}–{last + 1} 步（应对）：{error}；已停止",
+                        )
+                        self.log(f"[{number}–{last + 1}/{total}] ✗ {error}")
+                        break
+                    i = last + 1
+                    continue
                 begun = self.clock()
                 self._sleep(step.delay_for(i))
                 outcome = StepResult(number, "done")
@@ -289,6 +375,7 @@ class Player:
                     self.log(
                         f"[{number}/{total}] ↷ 跳过 {step.describe()}：没出现（可选），下一步的画面已就绪"
                     )
+                    i += 1
                     continue
                 if not error:
                     dx, dy = outcome.shift
@@ -311,6 +398,7 @@ class Player:
                 self.log(
                     f"[{number}/{total}] ✓ {step.describe()}  等待 {outcome.waited:.1f}s，{check}{moved}"
                 )
+                i += 1
             else:
                 if flow.end_check and flow.end_image:
                     if flow.end_look:

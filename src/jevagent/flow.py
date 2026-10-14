@@ -58,6 +58,12 @@ class Step:
     # Optional screen (e.g. a reward popup that only shows on some rounds): do the step if its
     # screen appears; skip it if the next step's screen shows up first and stays.
     optional: bool = False
+    # React (consecutive react steps form a block): do whichever of these steps' screens shows up,
+    # any number of times and in any order, until the screen of the step after the block appears.
+    # For cutscenes that differ per run (a gold card's board/skip screens). A react step without a
+    # screen check is a nudge: tapped when nothing is recognisable for a while, only after another
+    # react step has fired in the block.
+    react: bool = False
 
     @property
     def check_point(self) -> tuple[float, float]:
@@ -199,6 +205,7 @@ _STEP_FIELDS = {
     "check": bool,
     "until_next": bool,
     "optional": bool,
+    "react": bool,
     "delay": float,
     "timeout": float,
     "threshold": float,
