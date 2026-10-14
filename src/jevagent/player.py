@@ -185,13 +185,31 @@ class Player:
         return ""
 
     def _act(self, step: Step, index: int, points: list[list[float]], outcome: StepResult) -> str:
+        """Perform the gesture; until_next steps repeat it until the next screen appears.
+
+        A checked step is only tapped again while its own screen is still showing (the tap
+        did not take); once that screen is gone, extra taps could land on whatever comes next,
+        so it just waits for the expected screen. Empty-spot steps retap blindly: the spot was empty.
+        """
         arrived = self._next_screen(index) if step.until_next else None
-        for tap in range(1, (RETRY_TAPS if arrived else 1) + 1):
-            self.device.gesture(points, self.stop)
-            outcome.taps = tap
-            if arrived is None or self._wait_until(arrived, RETRY_WAIT):
+        self.device.gesture(points, self.stop)
+        outcome.taps = 1
+        if arrived is None:
+            return ""
+        still_here = None
+        if step.check:
+            anchor = make_anchor(self._image(step.image), step.points[0][1:])
+            still_here = lambda frame: find_anchor(to_work(frame), anchor).score >= step.threshold_value  # noqa: E731
+        for _ in range(RETRY_TAPS):
+            if self._wait_until(arrived, RETRY_WAIT):
                 return ""
-        return f"点了 {RETRY_TAPS} 次，下一画面仍未出现"
+            if outcome.taps >= RETRY_TAPS:
+                break
+            if still_here is not None and not still_here(self.last_frame):
+                continue  # left this screen: wait for the next one without tapping
+            self.device.gesture(points, self.stop)
+            outcome.taps += 1
+        return f"点了 {outcome.taps} 次，等了 {RETRY_WAIT * RETRY_TAPS:.0f}s，下一画面仍未出现"
 
     def run(self, run_dir: Path) -> RunResult:
         flow = self.flow

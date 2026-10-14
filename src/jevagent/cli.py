@@ -64,6 +64,8 @@ def print_steps(flow: flows.Flow) -> None:
     for i, step in enumerate(flow.steps):
         if step.check:
             check = f"检查画面≥{step.threshold_value:.2f}"
+            if step.until_next:
+                check += f"，没反应再点（最多 {flows.RETRY_TAPS} 次）"
         elif step.until_next:
             check = f"点空白处，点到下一画面出现（最多 {flows.RETRY_TAPS} 次）"
         else:

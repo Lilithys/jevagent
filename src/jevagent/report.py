@@ -80,6 +80,8 @@ def _overlay(step: Step, size: list[int]) -> str:
 def _settings(step: Step, index: int) -> str:
     if step.check:
         check = f'<span class="tag ok">检查画面 ≥{step.threshold_value:.2f}</span>'
+        if step.until_next:
+            check += f' <span class="tag ok">没反应再点（最多 {RETRY_TAPS} 次）</span>'
     elif step.until_next:
         check = f'<span class="tag ok">点到下一画面出现</span> <span class="small">空白处，最多点 {RETRY_TAPS} 次</span>'
     else:

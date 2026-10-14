@@ -159,3 +159,19 @@ def test_last_step_tap_anywhere_waits_for_the_end_screen(recorded, screens):
     phone = FakePhone(screens, "home", clock, ROUTES, ignore={"shop": 0})
     result, _ = play(flow, folder, phone, clock)
     assert result.status == "success" and result.steps[3].taps == 1
+
+
+def test_checked_tap_until_next_retaps_only_while_its_screen_is_still_there(recorded, screens):
+    flow, folder = recorded
+    flow.steps[2].until_next = True  # checked OK button + tap until the shop shows
+    clock = FakeClock()
+    phone = FakePhone(screens, "home", clock, ROUTES, ignore={"popup": 1})  # first tap swallowed
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success" and result.steps[2].taps == 2
+
+    clock = FakeClock()
+    unexpected = {**ROUTES, ("popup", 0): ("home", 0.3)}  # OK leads somewhere the flow did not expect
+    phone = FakePhone(screens, "home", clock, unexpected)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "failed" and "下一画面仍未出现" in result.reason
+    assert result.steps[2].taps == 1  # popup gone: no more taps on the wrong screen
