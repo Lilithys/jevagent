@@ -129,3 +129,18 @@ def test_stop_request_ends_the_routine(segments):
         phone, segments, {"B"}, 2, stop=stop, log=lambda s: None, clock=clock, sleep=sleep
     )
     assert status == "stopped" and 0 < len(done) < 8
+
+
+def test_loop_ends_when_the_repeated_flow_has_nothing_to_do(segments):
+    screens = {
+        "home": make_screen("home", 1),
+        "shop": make_screen("shop", 2),
+        "popup": make_screen("popup", 3),
+    }
+    clock = FakeClock()
+    phone = ChestPhone(screens, "home", clock, ROUTES, gifts=2)  # only two gifts today
+    status, reason, done = run_routine(
+        phone, segments, {"B"}, 0, until_empty={"B"}, log=lambda s: None, clock=clock, sleep=clock.sleep
+    )
+    assert status == "success" and "第 2 轮「B」没有可做的了" in reason
+    assert [(s.round, s.flow) for s in done] == [(1, "A"), (1, "B"), (1, "B"), (1, "C"), (2, "A")]

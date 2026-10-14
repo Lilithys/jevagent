@@ -200,6 +200,9 @@ def write_run_report(flow: Flow, folder: Path, run_dir: Path, run: dict) -> Path
             )
         title = f"第 {failed} 步失败时（蓝框/红圈是录制时的位置）" if step else "最后的画面"
         shot = f'<h2>{title}</h2><div class="grid">{"".join(cards)}</div>'
+    if run.get("shots"):
+        cards = "".join(_image_card(name, "", f"应对前的画面 {name}") for name in run["shots"])
+        shot += f'<h2>应对时的截图（如金卡）</h2><div class="grid">{cards}</div>'
     end = "" if run.get("end_score") is None else f" · 结束画面相似度 {run['end_score']:.2f}"
     started = run.get("started", "").replace("T", " ")
     body = (

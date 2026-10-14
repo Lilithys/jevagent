@@ -111,6 +111,7 @@ def test_normal_chest_skips_every_react_step(tmp_path):
     result = play(flow, folder, game, clock)
     assert result.status == "success", result.reason
     assert [g[0] for g in game.gestures] == ["panel", "summary"]
+    assert result.shots == []  # nothing to show for a normal chest
 
 
 def test_gold_chest_reacts_to_board_corridor_and_skips(tmp_path):
@@ -129,6 +130,11 @@ def test_gold_chest_reacts_to_board_corridor_and_skips(tmp_path):
     ]
     assert game.gestures[1][2] == 1.0  # the board got the recorded long press
     assert [s.step for s in result.steps] == [1, 2, 3, 4, 4, 6]  # either ⏭ step serves both skip screens
+    assert result.shots == ["react-01.jpg", "react-02.jpg", "react-03.jpg", "react-04.jpg"]
+    run_dir = sorted((folder / "runs").iterdir())[-1]
+    assert all(
+        (run_dir / shot).is_file() for shot in result.shots
+    )  # the board, corridor and both skip screens
 
 
 def test_no_blind_nudge_before_a_known_cutscene_screen(tmp_path):

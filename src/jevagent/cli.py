@@ -280,6 +280,11 @@ def cmd_loop(args: argparse.Namespace) -> int:
     if unknown:
         print(f"--repeat 的流程不在循环里: {', '.join(sorted(unknown))}")
         return 2
+    if set(args.until_empty or []) - set(args.repeat or []):
+        print("--until-empty 的流程也要用 --repeat 标记（重复做到没有为止的那一段）")
+        return 2
+    if args.times == 0 and not args.until_empty:
+        print("提示：--times 0 且没有 --until-empty，会一直循环到失败或按 Enter。")
     device = connect(args)
     stop = threading.Event()
     started = time.monotonic()
@@ -288,12 +293,20 @@ def cmd_loop(args: argparse.Namespace) -> int:
         if sys.stdin.isatty():
             threading.Thread(target=lambda: (sys.stdin.readline(), stop.set()), daemon=True).start()
         order = " → ".join(f"{n}（重复到没有为止）" if n in (args.repeat or []) else n for n in args.names)
+        rounds = f"{args.times} 轮" if args.times else "不限轮数"
+        ending = f"；「{'、'.join(args.until_empty)}」一轮里没有可做的就结束" if args.until_empty else ""
         print(
-            f"\n循环 {args.times} 轮：{order}。请停在「{args.names[0]}」的起始画面；按 Enter 停止。",
+            f"\n循环（{rounds}{ending}）：{order}。请停在「{args.names[0]}」的起始画面；按 Enter 停止。",
             flush=True,
         )
         status, reason, segments = run_routine(
-            device, folders, set(args.repeat or []), args.times, stop=stop, log=lambda s: print(s, flush=True)
+            device,
+            folders,
+            set(args.repeat or []),
+            args.times,
+            until_empty=set(args.until_empty or []),
+            stop=stop,
+            log=lambda s: print(s, flush=True),
         )
     finally:
         device.close()
@@ -306,6 +319,11 @@ def cmd_loop(args: argparse.Namespace) -> int:
             mark = "✓" if runs and ok == len(runs) else ("✗" if runs else "—")
             parts.append(f"{name}{f' ×{len(runs)}' if len(runs) > 1 else ''} {mark}")
         print(f"  第 {number} 轮：" + " · ".join(parts))
+    shots = [seg.run_dir / name for seg in segments for name in seg.result.shots]
+    if shots:
+        print(f"\n应对时的截图（如金卡）共 {len(shots)} 张：")
+        for path in shots:
+            print(f"  {path}")
     if status == "stopped":
         return 130
     return 0 if status == "success" else 1
@@ -394,7 +412,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--repeat", action="append", metavar="流程", help="这个流程重复做到起始画面不再出现为止（如开宝箱）"
     )
-    p.add_argument("--times", type=int, default=1, help="循环轮数")
+    p.add_argument("--times", type=int, default=1, help="循环轮数；0 = 不限，直到 --until-empty 的条件或失败")
+    p.add_argument(
+        "--until-empty",
+        action="append",
+        metavar="流程",
+        help="这个重复流程在一轮里一次都做不了时结束整个循环（如宝箱用完）",
+    )
     device_args(p)
     sub.add_parser("list", help="列出流程和回放结果")
     p = sub.add_parser("show", help="打印步骤并打开报告")
@@ -414,8 +438,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if getattr(args, "times", 1) < 1:
-        print("--times 至少为 1")
+    if getattr(args, "times", 1) < (0 if args.command == "loop" else 1):
+        print("--times 至少为 1（loop 可用 0 表示不限轮数）")
         return 2
     handler = {
         "loop": cmd_loop,

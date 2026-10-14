@@ -67,6 +67,7 @@ class RunResult:
     steps: list[StepResult] = field(default_factory=list)
     end_score: float | None = None
     image: str | None = None  # last frame seen, saved in the run folder
+    shots: list[str] = field(default_factory=list)  # screens a react step responded to (e.g. a gold card)
     seconds: float = 0.0
 
 
@@ -311,6 +312,9 @@ class Player:
                     return f"应对步骤已执行 {REACT_MAX} 次，画面仍未进入下一步"
                 k = nudges[0] if nudge else key
                 step = steps[k]
+                shot = f"react-{len(result.shots) + 1:02d}.jpg"  # the screen as it was before reacting
+                save_jpeg(self._run_dir / shot, frame)
+                result.shots.append(shot)
                 dx, dy = (0.0, 0.0)
                 if match is not None and step.tap_follows_check(min(self.flow.size), ANCHOR_SIDE):
                     dx, dy = match.shift_in(size)
@@ -322,7 +326,7 @@ class Player:
                     StepResult(k + 1, "done", score, taps=1, shift=[round(dx, 1), round(dy, 1)])
                 )
                 why = "没有可识别的画面，轻点一下继续" if nudge else f"画面出现，应对（匹配 {score:.2f}）"
-                self.log(f"[{k + 1}/{total}] ↻ {step.describe()}  {why}")
+                self.log(f"[{k + 1}/{total}] ↻ {step.describe()}  {why}，截图 {shot}")
                 if nudge:
                     nudged += 1
                 else:
@@ -339,6 +343,8 @@ class Player:
         result = RunResult(flow.name, flow.revision, datetime.now().isoformat(timespec="seconds"))
         started = self.clock()
         total = len(flow.steps)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        self._run_dir = run_dir
         try:
             width, height = self.device.size
             rec_w, rec_h = flow.size

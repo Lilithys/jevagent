@@ -40,8 +40,9 @@ uv run jevagent play 商店来回           # 回放；回放中按 Enter 停止
 uv run jevagent play 商店来回 --times 10   # 连续回放（流程要回到起始画面），失败即停
 uv run jevagent play A-战斗 --from 2       # 前面的步骤已手动做完，从第 2 步接着回放
 uv run jevagent list                   # 所有流程与回放成功次数
-uv run jevagent loop A-战斗 B-普通宝箱 C-滴答宝箱 --repeat B-普通宝箱 --times 3
-                                       # 按顺序连起来循环 3 轮；--repeat 的流程做到它的起始画面不再出现为止
+uv run jevagent loop B-开一个宝箱 C-滴答宝箱 A-战斗 --repeat B-开一个宝箱 --until-empty B-开一个宝箱 --times 0
+                                       # 按顺序循环；--repeat 的流程做到它的起始画面不再出现为止；
+                                       # --until-empty：它一轮里一次都做不了就结束整个循环；--times 0 不限轮数
 uv run jevagent edit 商店来回 --delete 3 --set 2.check=off --set 4.timeout=30
 ```
 
