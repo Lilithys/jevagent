@@ -319,11 +319,15 @@ def cmd_loop(args: argparse.Namespace) -> int:
             mark = "✓" if runs and ok == len(runs) else ("✗" if runs else "—")
             parts.append(f"{name}{f' ×{len(runs)}' if len(runs) > 1 else ''} {mark}")
         print(f"  第 {number} 轮：" + " · ".join(parts))
-    shots = [seg.run_dir / name for seg in segments for name in seg.result.shots]
-    if shots:
-        print(f"\n应对时的截图（如金卡）共 {len(shots)} 张：")
-        for path in shots:
-            print(f"  {path}")
+    # A normal chest only reacts once (closing its reward summary); more than one response means a
+    # cutscene was handled, e.g. a gold card. Every response's screenshot stays in its run folder.
+    special = [seg for seg in segments if len(seg.result.shots) > 1]
+    if special:
+        print(f"\n有过场动画（如金卡）的 {len(special)} 次，截图在：")
+        for seg in special:
+            print(f"  {seg.run_dir}  （{len(seg.result.shots)} 张，见 report.html）")
+    elif any(seg.result.shots for seg in segments):
+        print("\n没有遇到金卡；每次开箱的奖励汇总截图在各自的回放目录里。")
     if status == "stopped":
         return 130
     return 0 if status == "success" else 1
