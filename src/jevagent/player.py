@@ -285,10 +285,15 @@ class Player:
         fired = nudged = 0
         seen: object = None
         streak = 0
+        # The goal only counts once it has been gone: a block that ends on the screen it started from
+        # (the chest panel) must first leave it.
+        left = False
         while True:
             frame = self._frame()
             work = to_work(frame)
-            key: object = "goal" if goal(frame) else None
+            at_goal = goal(frame)
+            left = left or not at_goal
+            key: object = "goal" if at_goal and left else None
             match = None
             if key is None:
                 for k, anchor in handlers:

@@ -93,7 +93,7 @@ def chest_flow(tmp_path):
         step("corridor", (1889, 508), check=False, react=True),  # nudge
         step("corridor_skip", centre(SKIP), react=True),
         step("legendary", centre(SKIP), react=True),
-        step("summary", centre(SUM), until_next=True),
+        step("summary", centre(SUM), react=True),  # closing the summary is one more response
     ]
     return Flow(name="B", size=[W, H], steps=steps, end_image="end.jpg", end_gap=3.0), folder
 
@@ -111,7 +111,7 @@ def test_normal_chest_skips_every_react_step(tmp_path):
     result = play(flow, folder, game, clock)
     assert result.status == "success", result.reason
     assert [g[0] for g in game.gestures] == ["panel", "summary"]
-    assert result.shots == []  # nothing to show for a normal chest
+    assert result.shots == ["react-01.jpg"]  # the summary it closed
 
 
 def test_gold_chest_reacts_to_board_corridor_and_skips(tmp_path):
@@ -130,7 +130,7 @@ def test_gold_chest_reacts_to_board_corridor_and_skips(tmp_path):
     ]
     assert game.gestures[1][2] == 1.0  # the board got the recorded long press
     assert [s.step for s in result.steps] == [1, 2, 3, 4, 4, 6]  # either ⏭ step serves both skip screens
-    assert result.shots == ["react-01.jpg", "react-02.jpg", "react-03.jpg", "react-04.jpg"]
+    assert result.shots == ["react-01.jpg", "react-02.jpg", "react-03.jpg", "react-04.jpg", "react-05.jpg"]
     run_dir = sorted((folder / "runs").iterdir())[-1]
     assert all(
         (run_dir / shot).is_file() for shot in result.shots
@@ -144,3 +144,33 @@ def test_no_blind_nudge_before_a_known_cutscene_screen(tmp_path):
     result = play(flow, folder, game, clock)
     assert result.status == "failed" and "应对" in result.reason
     assert [g[0] for g in game.gestures] == ["panel"]  # nothing was tapped on the unknown screen
+
+
+class FlashGame(ChestGame):
+    """A gold chest whose opening animation briefly looks like the reward summary."""
+
+    def gesture(self, points, stop=None):
+        if self.screen == "panel" and inside(points[0][1:], OPEN):
+            self.gestures.append((self.screen, points[0][1:], points[-1][0]))
+            self.flash = (self.clock.now + 0.5, self.clock.now + 1.3)  # summary-like frames
+            self.pending = (self.clock.now + 2.5, "board")
+            self.clock.sleep(points[-1][0])
+            return
+        super().gesture(points, stop)
+
+    def frame(self):
+        image = super().frame()
+        flash = getattr(self, "flash", None)
+        if flash and flash[0] <= self.clock.now < flash[1]:
+            return SCREENS["summary"].copy()
+        return image
+
+
+def test_a_summary_look_alike_during_the_opening_does_not_end_the_chest(tmp_path):
+    flow, folder = chest_flow(tmp_path)
+    clock = FakeClock()
+    game = FlashGame(clock, gold=True)
+    result = play(flow, folder, game, clock)
+    assert result.status == "success", result.reason
+    assert [g[0] for g in game.gestures][:2] == ["panel", "panel"]  # one harmless tap during the animation
+    assert "board" in [g[0] for g in game.gestures]  # the gold card was still handled
