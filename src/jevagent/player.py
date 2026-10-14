@@ -149,7 +149,7 @@ class Player:
             following = steps[index + 1]
             if not following.check:
                 return None
-            anchor = make_anchor(self._image(following.image), following.points[0][1:])
+            anchor = make_anchor(self._image(following.image), following.check_point)
             return lambda frame: find_anchor(to_work(frame), anchor).score >= following.threshold_value
         if self.flow.end_check and self.flow.end_image:
             reference = self._image(self.flow.end_image)
@@ -168,7 +168,7 @@ class Player:
         """Wait until it is safe to act; returns an error message instead when it is not."""
         if step.check:
             timeout = step.timeout_for(index)
-            anchor = make_anchor(self._image(step.image), step.points[0][1:])
+            anchor = make_anchor(self._image(step.image), step.check_point)
             match, best = self._wait_anchor(anchor, step.threshold_value, timeout)
             outcome.score = round(match.score if match else best, 3)
             if match is None:
@@ -198,7 +198,7 @@ class Player:
             return ""
         still_here = None
         if step.check:
-            anchor = make_anchor(self._image(step.image), step.points[0][1:])
+            anchor = make_anchor(self._image(step.image), step.check_point)
             still_here = lambda frame: find_anchor(to_work(frame), anchor).score >= step.threshold_value  # noqa: E731
         for _ in range(RETRY_TAPS):
             if self._wait_until(arrived, RETRY_WAIT):

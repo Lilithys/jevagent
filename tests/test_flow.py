@@ -106,3 +106,46 @@ def test_a_one_minute_battle_gets_a_long_enough_wait():
     flow = make_flow()
     edit(flow, [], ["1.timeout=600"])
     assert flow.steps[0].timeout_for(0) == 600.0
+
+
+def test_look_point_moves_the_check_but_not_the_tap():
+    flow = make_flow()
+    assert flow.steps[0].check_point == (100, 100)
+    edit(flow, [], ["1.look=2035,960"])
+    assert flow.steps[0].look == [2035.0, 960.0] and flow.steps[0].check_point == (2035.0, 960.0)
+    assert flow.steps[0].points[0][1:] == [100, 100]
+    edit(flow, [], ["1.look=auto"])
+    assert flow.steps[0].look is None
+    for bad in ("1.look=5000,10", "1.look=abc", "1.look=1,2,3"):
+        with pytest.raises(FlowError):
+            edit(flow, [], [bad])
+
+
+def test_tap_point_can_be_moved_without_re_recording():
+    flow = make_flow()
+    edit(flow, [], ["1.tap=1200,210", "2.tap=110,20"])
+    assert flow.steps[0].points == [[0.0, 1200.0, 210.0], [0.1, 1200.0, 210.0]]
+    assert flow.steps[1].points == [[0.0, 110.0, 20.0], [0.3, 500.0, 20.0]]  # the swipe moves as a whole
+    for bad in ("2.tap=2300,20", "1.tap=auto", "1.tap=9999,1"):
+        with pytest.raises(FlowError):
+            edit(flow, [], [bad])
+
+
+def test_re_recorded_tail_replaces_the_steps_from_n_on():
+    from jevagent.flow import splice
+
+    base = make_flow()  # 3 steps
+    tail = Flow(
+        name="商店",
+        size=[2376, 1152],
+        end_image="end-v2.jpg",
+        end_gap=6.0,
+        steps=[Step(points=[[0.0, 660, 222], [0.1, 660, 222]], gap=2.0, image="step-02-v2.jpg")],
+    )
+    merged = splice(base, tail, 2)
+    assert [s.image for s in merged.steps] == ["step-01.jpg", "step-02-v2.jpg"]
+    assert (merged.end_image, merged.end_gap, merged.revision) == ("end-v2.jpg", 6.0, 2)
+    with pytest.raises(FlowError):
+        splice(make_flow(), Flow(name="x", size=[1152, 2376], steps=tail.steps), 2)
+    with pytest.raises(FlowError):
+        splice(make_flow(), tail, 5)

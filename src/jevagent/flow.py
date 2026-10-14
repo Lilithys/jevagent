@@ -51,6 +51,13 @@ class Step:
     # "Tap anywhere to continue": tap again until the next step's screen (or the end screen)
     # appears, at most RETRY_TAPS times. For taps on an empty spot, where nothing can be checked.
     until_next: bool = False
+    # Check the patch around this point instead of the tap point, e.g. an icon above a changing
+    # count, or the number a dialog shows before tapping its confirm button. Recorded-frame pixels.
+    look: list[float] | None = None
+
+    @property
+    def check_point(self) -> tuple[float, float]:
+        return tuple(self.look) if self.look else tuple(self.points[0][1:])
 
     @property
     def threshold_value(self) -> float:
@@ -124,6 +131,20 @@ class Flow:
         return flow
 
 
+def splice(base: Flow, tail: Flow, start: int) -> Flow:
+    """Keep `base` before step `start` (1-based) and continue with a re-recorded tail."""
+    if list(tail.size) != list(base.size):
+        raise FlowError(
+            f"新录的画面 {tail.size[0]}x{tail.size[1]} 与原流程 {base.size[0]}x{base.size[1]} 不同，不能拼接"
+        )
+    if not 1 <= start <= len(base.steps) + 1:
+        raise FlowError(f"--from 需在 1–{len(base.steps) + 1} 之间（共 {len(base.steps)} 步）")
+    base.steps = base.steps[: start - 1] + tail.steps
+    base.end_image, base.end_gap, base.end_check = tail.end_image, tail.end_gap, tail.end_check
+    base.revision += 1
+    return base
+
+
 def validate_name(name: str) -> str:
     name = name.strip()
     if not name or name.startswith(".") or re.search(r'[/\\:*?"<>|\x00-\x1f]', name):
@@ -162,10 +183,20 @@ _STEP_FIELDS = {
     "delay": float,
     "timeout": float,
     "threshold": float,
+    "look": "point",
+    "tap": "point",
 }
 
 
-def _value(kind: type, text: str):
+def _value(kind, text: str):
+    if kind == "point":
+        if text.lower() in ("auto", "none", ""):
+            return None
+        try:
+            x, y = (float(v) for v in text.split(","))
+        except ValueError:
+            raise FlowError(f"需要 x,y 像素坐标（或 auto）: {text}") from None
+        return [x, y]
     if kind is bool:
         if text.lower() not in _BOOL:
             raise FlowError(f"需要 on/off: {text}")
@@ -209,6 +240,20 @@ def edit(flow: Flow, delete: list[int], assignments: list[str]) -> list[str]:
         value = _value(_STEP_FIELDS[name], raw)
         if name == "threshold" and value is not None and not 0.3 <= value <= 0.99:
             raise FlowError("threshold 需在 0.3–0.99 之间（auto 恢复默认）")
+        if (
+            name in ("look", "tap")
+            and value is not None
+            and not (0 <= value[0] < flow.size[0] and 0 <= value[1] < flow.size[1])
+        ):
+            raise FlowError(f"{name} 坐标需在画面 {flow.size[0]}x{flow.size[1]} 之内: {raw}")
+        if name == "tap":  # move the whole gesture so its first point lands on the new spot
+            if value is None:
+                raise FlowError("tap 需要 x,y 坐标")
+            points = flow.steps[index].points
+            dx, dy = value[0] - points[0][1], value[1] - points[0][2]
+            if not all(0 <= x + dx < flow.size[0] and 0 <= y + dy < flow.size[1] for _, x, y in points):
+                raise FlowError(f"第 {number} 步的滑动路径移到 {raw} 后会超出画面")
+            name, value = "points", [[t, x + dx, y + dy] for t, x, y in points]
         changes.append((flow.steps[index], name, value))
         log.append(f"第 {number} 步 {name} = {raw}")
     for number in delete:

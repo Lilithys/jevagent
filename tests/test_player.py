@@ -175,3 +175,22 @@ def test_checked_tap_until_next_retaps_only_while_its_screen_is_still_there(reco
     result, _ = play(flow, folder, phone, clock)
     assert result.status == "failed" and "下一画面仍未出现" in result.reason
     assert result.steps[2].taps == 1  # popup gone: no more taps on the wrong screen
+
+
+def test_step_can_check_one_spot_and_tap_another(recorded, screens):
+    flow, folder = recorded
+    # Check the shop's BACK button, still tap GIFT. (Not TAB: in these synthetic screens it looks like
+    # the home screen's BAG button nearby, so it would match before the shop opens.)
+    flow.steps[1].look = list(centre("shop", 2))
+    clock = FakeClock()
+    phone = FakePhone(screens, "home", clock, ROUTES)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success"
+    assert phone.gestures[1][0][1:] == list(centre("shop", 1))
+
+    no_back = screens["shop"].copy()
+    no_back[30:140, 30:210] = no_back[400:510, 1700:1880]  # the checked button is missing this time
+    clock = FakeClock()
+    phone = FakePhone({**screens, "shop": no_back}, "home", clock, ROUTES)
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "failed" and "第 2 步" in result.reason and len(phone.gestures) == 1

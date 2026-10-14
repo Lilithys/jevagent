@@ -57,8 +57,9 @@ def _overlay(step: Step, size: list[int]) -> str:
     parts = []
     if step.check:
         side = ANCHOR_SIDE * min(w, h)
-        x0 = min(max(pts[0][0] - side / 2, 0), w - side)
-        y0 = min(max(pts[0][1] - side / 2, 0), h - side)
+        cx, cy = step.check_point
+        x0 = min(max(cx - side / 2, 0), w - side)
+        y0 = min(max(cy - side / 2, 0), h - side)
         parts.append(
             f'<rect x="{x0:.0f}" y="{y0:.0f}" width="{side:.0f}" height="{side:.0f}" fill="none" '
             f'stroke="#0a84ff" stroke-width="{r / 3:.1f}" stroke-dasharray="{r:.0f} {r / 2:.0f}"/>'

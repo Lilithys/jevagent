@@ -80,6 +80,8 @@ class Recorder:
     """Runs a frame grabber and a getevent reader in background threads.
 
     The device must provide frame(), size, display(), touchscreen() and getevent(path).
+    `first_index` and `tag` number and name the files when re-recording the tail of a flow
+    (steps from N on), so they never overwrite the images of the steps that are kept.
     """
 
     def __init__(
@@ -88,8 +90,11 @@ class Recorder:
         folder: Path,
         log: Callable[[str], None] = print,
         clock: Callable[[], float] = time.monotonic,
+        first_index: int = 1,
+        tag: str = "",
     ) -> None:
         self.device, self.folder, self.log, self.clock = device, folder, log, clock
+        self.first_index, self.tag = first_index, tag
         self.frames = FrameBuffer()
         self.steps: list[Step] = []
         self.skipped = 0
@@ -164,11 +169,11 @@ class Recorder:
         down, up = gesture.start + offset, gesture.end + offset
         gap = down - (self._last_up if self._last_up is not None else self.started)
         self._last_up = up
-        index = len(self.steps) + 1
+        index = self.first_index + len(self.steps)
         points = screen_points(gesture, self.screen, self.natural, self.orientation, self.size)
         frame = pre[1]
-        step = Step(points=points, gap=round(max(gap, 0.0), 2), image=f"step-{index:02d}.jpg")
-        if index > 1 and gap < QUICK_FOLLOW_UP:
+        step = Step(points=points, gap=round(max(gap, 0.0), 2), image=f"step-{index:02d}{self.tag}.jpg")
+        if self.steps and gap < QUICK_FOLLOW_UP:
             step.check, step.note = False, f"距上一步仅 {gap:.1f}s，按录制节奏执行"
         elif make_anchor(frame, points[0][1:]).texture < MIN_TEXTURE:
             # Usually "tap anywhere to continue/close": keep tapping until the next screen shows.
@@ -195,7 +200,7 @@ class Recorder:
         """Stop, capture the end screen, return the flow (not yet saved)."""
         self.stop()
         end_gap = self.clock() - (self._last_up if self._last_up is not None else self.started)
-        end_image = "end.jpg"
+        end_image = f"end{self.tag}.jpg"
         try:
             save_jpeg(self.folder / end_image, self.device.frame())
         except DeviceError as exc:  # keep the recorded steps; just skip the end check

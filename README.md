@@ -66,12 +66,16 @@ uv run jevagent edit 名称                          # 不带参数：列出步�
 uv run jevagent edit 名称 --delete 3 5             # 删除误触
 uv run jevagent edit 名称 --set 2.check=off        # 这一步不检查画面（内容每天变化时）
 uv run jevagent edit 名称 --set 6.until_next=on    # 点到下一画面出现为止（录制时点在空白处的步骤会自动打开）
+uv run jevagent edit 名称 --set 6.tap=1200,210     # 改点击位置（滑动整体平移）
+uv run jevagent edit 名称 --set 1.look=2035,960    # 检查这里、点击位置不变：例如跳过会变的数字，或确定前核对数量
 uv run jevagent edit 名称 --set 4.timeout=40       # 加载慢的步骤多等一会；auto 恢复默认
 uv run jevagent edit 名称 --set 4.delay=2          # 至少先等 2 秒
 uv run jevagent edit 名称 --set 1.threshold=0.7    # 这一步要求更像（默认 0.6，一般不需要改；auto 恢复默认）
 uv run jevagent edit 名称 --set 1.label=打开商店
 uv run jevagent edit 名称 --set end_check=off      # 不检查结束画面
 ```
+
+只想改后半段时不用整段重录：`uv run jevagent record 名称 --from 7` 保留前 6 步，从第 7 步开始重录并替换后面的步骤和结束画面（手机先停在第 6 步刚做完时的画面）。
 
 每次编辑版本号加 1，回放记录会记下所用版本。流程文件是可读的 JSON，也可以直接改。
 

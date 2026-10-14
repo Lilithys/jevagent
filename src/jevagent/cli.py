@@ -64,6 +64,8 @@ def print_steps(flow: flows.Flow) -> None:
     for i, step in enumerate(flow.steps):
         if step.check:
             check = f"检查画面≥{step.threshold_value:.2f}"
+            if step.look:
+                check += f"（看 ({step.look[0]:.0f},{step.look[1]:.0f}) 处）"
             if step.until_next:
                 check += f"，没反应再点（最多 {flows.RETRY_TAPS} 次）"
         elif step.until_next:
@@ -126,15 +128,32 @@ def cmd_record(args: argparse.Namespace) -> int:
     from jevagent.report import write_flow_report
 
     target = flow_dir(args.name)
-    if target.exists() and not args.force:
-        print(f"流程「{args.name}」已存在。换个名字，或加 --force 删除旧流程（含回放记录）后重录。")
+    base = None
+    if args.start is not None:  # re-record only the tail of an existing flow
+        if args.force:
+            print("--from 和 --force 不能同时使用。")
+            return 2
+        base = flows.load(target)
+        if not 1 <= args.start <= len(base.steps) + 1:
+            print(f"--from 需在 1–{len(base.steps) + 1} 之间（「{base.name}」共 {len(base.steps)} 步）。")
+            return 2
+    elif target.exists() and not args.force:
+        print(f"流程「{args.name}」已存在。换个名字，或加 --force 删除旧流程（含回放记录）后重录，")
+        print("或用 --from N 只重录第 N 步及之后。")
         return 2
     tmp = flows_dir() / f".recording-{target.name}"
     shutil.rmtree(tmp, ignore_errors=True)
+    tag = f"-v{base.revision + 1}" if base else ""
     device = connect(args)
-    recorder = Recorder(device, tmp)
+    recorder = Recorder(device, tmp, first_index=args.start or 1, tag=tag)
     try:
         recorder.start()
+        if base and args.start > 1:
+            print(
+                f"\n只重录第 {args.start} 步及之后：保留第 1–{args.start - 1} 步，"
+                f"原第 {args.start}–{len(base.steps)} 步和结束画面会被替换。"
+                f"\n请让手机停在第 {args.start - 1} 步刚做完时的画面。"
+            )
         print("\n开始录制。在手机上像平时一样操作（点击、长按、滑动）。")
         print("最后一步做完、画面停稳后，回到这里按 Enter 结束；Ctrl+C 放弃。\n", flush=True)
         input()
@@ -158,14 +177,30 @@ def cmd_record(args: argparse.Namespace) -> int:
         print("没有录到手势，未保存。确认是在手机屏幕上操作的。")
         print(f"手机原始触摸记录已保留：{DATA / f'last-{RAW_LOG}'}")
         return 1
-    flows.save(flow, tmp)
-    if target.exists():
-        shutil.rmtree(target)
-    tmp.rename(target)
+    if base:
+        recorded = len(flow.steps)
+        try:
+            flow = flows.splice(base, flow, args.start)
+        except FlowError:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
+        for item in tmp.iterdir():  # new files carry the tag, so the kept steps' images stay intact
+            os.replace(item, target / (f"getevent{tag}.log" if item.name == RAW_LOG else item.name))
+        shutil.rmtree(tmp, ignore_errors=True)
+        flows.save(flow, target)
+        print(
+            f"\n已更新「{flow.name}」：保留前 {args.start - 1} 步，新录 {recorded} 步，共 {len(flow.steps)} 步。"
+        )
+    else:
+        flows.save(flow, tmp)
+        if target.exists():
+            shutil.rmtree(target)
+        tmp.rename(target)
     report = write_flow_report(flow, target)
     unchecked = [str(i + 1) for i, s in enumerate(flow.steps) if not s.check and not s.until_next]
     blank = [str(i + 1) for i, s in enumerate(flow.steps) if s.until_next]
-    print(f"\n已保存「{flow.name}」：{len(flow.steps)} 步 → {target}")
+    if not base:
+        print(f"\n已保存「{flow.name}」：{len(flow.steps)} 步 → {target}")
     if recorder.error:
         print(f"注意：录制中出过错（{recorder.error}），请检查步骤是否完整。")
     if blank:
@@ -288,6 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("record", help="在手机上操作，录成流程")
     p.add_argument("name")
     p.add_argument("--force", action="store_true", help="覆盖同名流程（旧回放记录一并删除）")
+    p.add_argument("--from", dest="start", type=int, metavar="N", help="只重录第 N 步及之后，保留前面的步骤")
     device_args(p)
     p = sub.add_parser("play", help="回放流程")
     p.add_argument("name")
@@ -304,7 +340,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--set",
         action="append",
         metavar="N.字段=值",
-        help="字段: label, check(on/off), delay, timeout(秒), threshold(默认 0.6)，数值填 auto 恢复默认；或 end_check=on/off",
+        help="字段: label, check(on/off), until_next(on/off), delay, timeout(秒), threshold(默认 0.6), look(x,y：检查这里而不是触点)，填 auto 恢复默认；或 end_check=on/off",
     )
     return parser
 
