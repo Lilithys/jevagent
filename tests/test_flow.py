@@ -104,8 +104,10 @@ def test_a_one_minute_battle_gets_a_long_enough_wait():
     assert battle.timeout_for(1) == 140.0
     assert Step(points=[[0.0, 1, 1], [0.1, 1, 1]], gap=400.0, image="x.jpg").timeout_for(1) == 600.0
     flow = make_flow()
-    edit(flow, [], ["1.timeout=600"])
-    assert flow.steps[0].timeout_for(0) == 600.0
+    edit(flow, [], ["1.timeout=1800"])  # set by hand: an auto-battle that runs until the chests are full
+    assert flow.steps[0].timeout_for(0) == 1800.0
+    with pytest.raises(FlowError):
+        edit(flow, [], ["1.timeout=4000"])
 
 
 def test_look_point_moves_the_check_but_not_the_tap():

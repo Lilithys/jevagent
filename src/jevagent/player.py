@@ -167,6 +167,14 @@ class Player:
             self._sleep(POLL)
         return True
 
+    def ready(self, timeout: float) -> bool:
+        """Whether the flow's start screen is showing (first step's check), without touching anything."""
+        step = self.flow.steps[0]
+        if step.check:
+            anchor = make_anchor(self._image(step.image), step.check_point)
+            return self._wait_anchor(anchor, step.threshold_value, timeout)[0] is not None
+        return self._wait_screen(self._image(step.image), timeout)[0]
+
     def _check(self, step: Step, index: int, outcome: StepResult, size: tuple[int, int]) -> str:
         """Wait until it is safe to act; returns an error message instead when it is not."""
         if step.check:

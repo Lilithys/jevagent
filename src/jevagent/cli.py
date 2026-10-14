@@ -255,6 +255,48 @@ def cmd_play(args: argparse.Namespace) -> int:
     return 0 if ok == args.times else 1
 
 
+def cmd_loop(args: argparse.Namespace) -> int:
+    from jevagent.player import STATUS
+    from jevagent.routine import run_routine
+
+    folders = [flow_dir(name) for name in args.names]
+    for folder in folders:
+        flows.load(folder)  # fail early on a missing flow, before connecting
+    unknown = set(args.repeat or []) - {folder.name for folder in folders}
+    if unknown:
+        print(f"--repeat 的流程不在循环里: {', '.join(sorted(unknown))}")
+        return 2
+    device = connect(args)
+    stop = threading.Event()
+    started = time.monotonic()
+    try:
+        print(f"触摸服务已就绪（{device.prepare_input()}）", flush=True)
+        if sys.stdin.isatty():
+            threading.Thread(target=lambda: (sys.stdin.readline(), stop.set()), daemon=True).start()
+        order = " → ".join(f"{n}（重复到没有为止）" if n in (args.repeat or []) else n for n in args.names)
+        print(
+            f"\n循环 {args.times} 轮：{order}。请停在「{args.names[0]}」的起始画面；按 Enter 停止。",
+            flush=True,
+        )
+        status, reason, segments = run_routine(
+            device, folders, set(args.repeat or []), args.times, stop=stop, log=lambda s: print(s, flush=True)
+        )
+    finally:
+        device.close()
+    print(f"\n结果：{STATUS[status]}。{reason}（用时 {(time.monotonic() - started) / 60:.1f} 分钟）")
+    for number in sorted({seg.round for seg in segments}):
+        parts = []
+        for name in args.names:
+            runs = [seg for seg in segments if seg.round == number and seg.flow == name]
+            ok = sum(seg.result.status == "success" for seg in runs)
+            mark = "✓" if runs and ok == len(runs) else ("✗" if runs else "—")
+            parts.append(f"{name}{f' ×{len(runs)}' if len(runs) > 1 else ''} {mark}")
+        print(f"  第 {number} 轮：" + " · ".join(parts))
+    if status == "stopped":
+        return 130
+    return 0 if status == "success" else 1
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     from jevagent.player import STATUS, load_runs
 
@@ -330,6 +372,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name")
     p.add_argument("--times", type=int, default=1, help="连续回放次数（流程须结束在起始画面），失败即停")
     device_args(p)
+    p = sub.add_parser("loop", help="把几个流程连起来按顺序回放，循环多轮")
+    p.add_argument("names", nargs="+", metavar="流程", help="按顺序回放的流程")
+    p.add_argument(
+        "--repeat", action="append", metavar="流程", help="这个流程重复做到起始画面不再出现为止（如开宝箱）"
+    )
+    p.add_argument("--times", type=int, default=1, help="循环轮数")
+    device_args(p)
     sub.add_parser("list", help="列出流程和回放结果")
     p = sub.add_parser("show", help="打印步骤并打开报告")
     p.add_argument("name")
@@ -352,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
         print("--times 至少为 1")
         return 2
     handler = {
+        "loop": cmd_loop,
         "devices": cmd_devices,
         "check": cmd_check,
         "record": cmd_record,

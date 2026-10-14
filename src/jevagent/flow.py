@@ -24,7 +24,8 @@ LONG_PRESS = 0.45  # seconds; shorter holds are shown as taps
 SETTLE_MAX = 1.5  # anchored steps start looking after min(recorded gap, this)
 FIRST_STEP_TIMEOUT = 5.0  # you start replay on the start screen, so it should be there already
 STEP_TIMEOUT = 10.0
-MAX_TIMEOUT = 600.0  # an auto-battle can take minutes before its result screen appears
+AUTO_TIMEOUT = 600.0  # cap of the automatic wait (twice the recorded gap)
+MAX_TIMEOUT = 3600.0  # longest wait you can set: the dog button keeps battling until the chests are full
 # Edge-match score an anchor needs (see vision.py). Real frames: same screen ~1.0, same button
 # on a changed page 0.7-0.8, a different screen at most 0.46.
 MATCH_THRESHOLD = 0.6
@@ -95,7 +96,7 @@ class Step:
             return self.timeout
         if index == 0:
             return FIRST_STEP_TIMEOUT
-        return min(max(STEP_TIMEOUT, 2 * self.gap), MAX_TIMEOUT)
+        return min(max(STEP_TIMEOUT, 2 * self.gap), AUTO_TIMEOUT)
 
 
 @dataclass
