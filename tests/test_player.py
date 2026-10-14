@@ -129,3 +129,33 @@ def test_refuses_a_screen_with_a_different_shape(recorded, screens):
     phone.size = (1152, 2376)
     result, _ = play(flow, folder, phone, clock)
     assert result.status == "error" and phone.gestures == []
+
+
+def test_tap_anywhere_step_taps_again_until_the_next_screen(recorded, screens):
+    flow, folder = recorded
+    flow.steps[2].check, flow.steps[2].until_next = False, True  # the popup's OK as "tap anywhere"
+    clock = FakeClock()
+    phone = FakePhone(screens, "home", clock, ROUTES, ignore={"popup": 2})  # first two taps swallowed
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success", result.reason
+    assert result.steps[2].taps == 3 and len(phone.gestures) == 6
+    assert result.steps[2].waited == pytest.approx(1.2, abs=0.01)  # min(gap, 1.5): no long blind wait
+
+
+def test_tap_anywhere_step_gives_up_after_five_taps(recorded, screens):
+    flow, folder = recorded
+    flow.steps[2].check, flow.steps[2].until_next = False, True
+    clock = FakeClock()
+    phone = FakePhone(screens, "home", clock, ROUTES, ignore={"popup": 99})
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "failed" and "点了 5 次" in result.reason
+    assert result.steps[2].taps == 5 and len(phone.gestures) == 2 + 5
+
+
+def test_last_step_tap_anywhere_waits_for_the_end_screen(recorded, screens):
+    flow, folder = recorded
+    flow.steps[3].check, flow.steps[3].until_next = False, True  # BACK as the last, unchecked step
+    clock = FakeClock()
+    phone = FakePhone(screens, "home", clock, ROUTES, ignore={"shop": 0})
+    result, _ = play(flow, folder, phone, clock)
+    assert result.status == "success" and result.steps[3].taps == 1

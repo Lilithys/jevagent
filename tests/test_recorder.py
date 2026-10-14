@@ -101,7 +101,8 @@ def test_records_steps_with_the_screen_seen_before_each_touch(tmp_path):
     assert steps[0].points[0][1:] == pytest.approx(list(centre("home", 0)), abs=1)
     assert [s.gap for s in steps] == pytest.approx([3.02, 1.4, 0.3, 2.0], abs=0.01)
     assert [s.check for s in steps] == [True, True, False, False]
-    assert "0.3s" in steps[2].note and "纯色" in steps[3].note
+    assert "0.3s" in steps[2].note and "空白处" in steps[3].note
+    assert [s.until_next for s in steps] == [False, False, False, True]  # quick follow-ups keep their rhythm
 
     def image(i):
         import cv2

@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 
 from jevagent.errors import DeviceError, Interrupted
-from jevagent.flow import Flow
+from jevagent.flow import RETRY_TAPS, RETRY_WAIT, Flow, Step
 from jevagent.recorder import save_jpeg
 from jevagent.vision import SAME_SCREEN, Anchor, Match, find_anchor, make_anchor, screen_similarity, to_work
 
@@ -36,6 +36,7 @@ class StepResult:
     score: float | None = None  # anchor match, or start-screen similarity for an unchecked first step
     waited: float = 0.0  # seconds from the end of the previous step until this gesture started
     shift: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    taps: int = 0  # gestures actually sent (until_next steps may tap more than once)
     error: str = ""
 
 
@@ -141,6 +142,57 @@ class Player:
                 return False, score
             self._sleep(POLL)
 
+    def _next_screen(self, index: int) -> Callable[[np.ndarray], bool] | None:
+        """Test for the screen that should follow step `index`, if one can be checked."""
+        steps = self.flow.steps
+        if index + 1 < len(steps):
+            following = steps[index + 1]
+            if not following.check:
+                return None
+            anchor = make_anchor(self._image(following.image), following.points[0][1:])
+            return lambda frame: find_anchor(to_work(frame), anchor).score >= following.threshold_value
+        if self.flow.end_check and self.flow.end_image:
+            reference = self._image(self.flow.end_image)
+            return lambda frame: screen_similarity(frame, reference) >= SAME_SCREEN
+        return None
+
+    def _wait_until(self, arrived: Callable[[np.ndarray], bool], timeout: float) -> bool:
+        deadline = self.clock() + timeout
+        while not arrived(self._frame()):
+            if self.clock() >= deadline:
+                return False
+            self._sleep(POLL)
+        return True
+
+    def _check(self, step: Step, index: int, outcome: StepResult, size: tuple[int, int]) -> str:
+        """Wait until it is safe to act; returns an error message instead when it is not."""
+        if step.check:
+            timeout = step.timeout_for(index)
+            anchor = make_anchor(self._image(step.image), step.points[0][1:])
+            match, best = self._wait_anchor(anchor, step.threshold_value, timeout)
+            outcome.score = round(match.score if match else best, 3)
+            if match is None:
+                return (
+                    f"{timeout:.0f}s 内没有出现录制时触点处的画面"
+                    f"（最高匹配 {best:.2f}，需要 {step.threshold_value:.2f}）"
+                )
+            outcome.shift = [round(v, 1) for v in match.shift_in(size)]
+        elif index == 0:
+            same, similarity = self._wait_screen(self._image(step.image), step.timeout_for(index))
+            outcome.score = round(similarity, 3)
+            if not same:
+                return f"当前画面不是录制起点（相似度 {similarity:.2f}）"
+        return ""
+
+    def _act(self, step: Step, index: int, points: list[list[float]], outcome: StepResult) -> str:
+        arrived = self._next_screen(index) if step.until_next else None
+        for tap in range(1, (RETRY_TAPS if arrived else 1) + 1):
+            self.device.gesture(points, self.stop)
+            outcome.taps = tap
+            if arrived is None or self._wait_until(arrived, RETRY_WAIT):
+                return ""
+        return f"点了 {RETRY_TAPS} 次，下一画面仍未出现"
+
     def run(self, run_dir: Path) -> RunResult:
         flow = self.flow
         result = RunResult(flow.name, flow.revision, datetime.now().isoformat(timespec="seconds"))
@@ -159,37 +211,25 @@ class Player:
                 begun = self.clock()
                 self._sleep(step.delay_for(i))
                 outcome = StepResult(number, "done")
-                error = ""
-                if step.check:
-                    timeout = step.timeout_for(i)
-                    anchor = make_anchor(self._image(step.image), step.points[0][1:])
-                    match, best = self._wait_anchor(anchor, step.threshold_value, timeout)
-                    outcome.score = round(match.score if match else best, 3)
-                    if match is None:
-                        error = (
-                            f"{timeout:.0f}s 内没有出现录制时触点处的画面"
-                            f"（最高匹配 {best:.2f}，需要 {step.threshold_value:.2f}）"
-                        )
-                    else:
-                        outcome.shift = [round(v, 1) for v in match.shift_in((width, height))]
-                elif i == 0:
-                    same, similarity = self._wait_screen(self._image(step.image), step.timeout_for(i))
-                    outcome.score = round(similarity, 3)
-                    if not same:
-                        error = f"当前画面不是录制起点（相似度 {similarity:.2f}）"
+                error = self._check(step, i, outcome, (width, height))
                 outcome.waited = round(self.clock() - begun, 2)
+                if not error:
+                    dx, dy = outcome.shift
+                    points = [[t, x * scale + dx, y * scale + dy] for t, x, y in step.points]
+                    error = self._act(step, i, points, outcome)
+                result.steps.append(outcome)
                 if error:
                     outcome.status, outcome.error = "failed", error
-                    result.steps.append(outcome)
-                    rest = "没有执行任何操作" if i == 0 else "后续步骤未执行"
+                    rest = "没有执行任何操作" if i == 0 and not outcome.taps else "后续步骤未执行"
                     result.status, result.reason = "failed", f"第 {number} 步：{error}；已停止，{rest}"
                     self.log(f"[{number}/{total}] ✗ {step.describe()}  {error}")
                     break
-                dx, dy = outcome.shift
-                points = [[t, x * scale + dx, y * scale + dy] for t, x, y in step.points]
-                self.device.gesture(points, self.stop)
-                result.steps.append(outcome)
-                check = f"画面匹配 {outcome.score:.2f}" if step.check else "按录制节奏，未检查画面"
+                if step.check:
+                    check = f"画面匹配 {outcome.score:.2f}"
+                elif step.until_next:
+                    check = f"空白处，点了 {outcome.taps} 次进入下一画面"
+                else:
+                    check = "按录制节奏，未检查画面"
                 moved = f"，位置偏移 ({dx:+.0f},{dy:+.0f})" if (dx, dy) != (0, 0) else ""
                 self.log(
                     f"[{number}/{total}] ✓ {step.describe()}  等待 {outcome.waited:.1f}s，{check}{moved}"

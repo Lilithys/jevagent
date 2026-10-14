@@ -62,11 +62,12 @@ def open_file(path: Path) -> None:
 
 def print_steps(flow: flows.Flow) -> None:
     for i, step in enumerate(flow.steps):
-        check = (
-            f"检查画面≥{step.threshold_value:.2f}"
-            if step.check
-            else f"不检查画面（{step.note or '手动关闭'}）"
-        )
+        if step.check:
+            check = f"检查画面≥{step.threshold_value:.2f}"
+        elif step.until_next:
+            check = f"点空白处，点到下一画面出现（最多 {flows.RETRY_TAPS} 次）"
+        else:
+            check = f"不检查画面（{step.note or '手动关闭'}）"
         timeout = f" 最多等 {step.timeout_for(i):.0f}s" if step.check else ""
         label = f"「{step.label}」" if step.label else ""
         print(
@@ -160,12 +161,15 @@ def cmd_record(args: argparse.Namespace) -> int:
         shutil.rmtree(target)
     tmp.rename(target)
     report = write_flow_report(flow, target)
-    unchecked = [str(i + 1) for i, s in enumerate(flow.steps) if not s.check]
+    unchecked = [str(i + 1) for i, s in enumerate(flow.steps) if not s.check and not s.until_next]
+    blank = [str(i + 1) for i, s in enumerate(flow.steps) if s.until_next]
     print(f"\n已保存「{flow.name}」：{len(flow.steps)} 步 → {target}")
     if recorder.error:
         print(f"注意：录制中出过错（{recorder.error}），请检查步骤是否完整。")
+    if blank:
+        print(f"第 {', '.join(blank)} 步点在空白处：回放时点到下一画面出现为止。")
     if unchecked:
-        print(f"第 {', '.join(unchecked)} 步回放时不检查画面（见报告里的原因）。")
+        print(f"第 {', '.join(unchecked)} 步回放时按录制节奏点击，不检查画面（见报告里的原因）。")
     print(f"先打开报告核对红圈是否点在你按的位置：{report}")
     open_file(report)
     return 0

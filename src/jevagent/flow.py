@@ -29,6 +29,8 @@ MAX_TIMEOUT = 600.0  # an auto-battle can take minutes before its result screen 
 # on a changed page 0.7-0.8, a different screen at most 0.46.
 MATCH_THRESHOLD = 0.6
 FLOW_VERSION = 2  # v2: anchors match edges; threshold None = MATCH_THRESHOLD
+RETRY_WAIT = 3.0  # until_next: seconds to wait for the next screen after each tap
+RETRY_TAPS = 5  # until_next: most taps before giving up
 
 
 class FlowError(ValueError):
@@ -46,6 +48,9 @@ class Step:
     delay: float | None = None  # override: minimum wait before acting
     timeout: float | None = None  # override: how long to wait for the anchor
     threshold: float | None = None  # override: anchor match score needed
+    # "Tap anywhere to continue": tap again until the next step's screen (or the end screen)
+    # appears, at most RETRY_TAPS times. For taps on an empty spot, where nothing can be checked.
+    until_next: bool = False
 
     @property
     def threshold_value(self) -> float:
@@ -76,7 +81,7 @@ class Step:
             return self.delay
         if index == 0:
             return 0.0
-        return min(self.gap, SETTLE_MAX) if self.check else self.gap
+        return min(self.gap, SETTLE_MAX) if self.check or self.until_next else self.gap
 
     def timeout_for(self, index: int) -> float:
         if self.timeout is not None:
@@ -150,7 +155,14 @@ _BOOL = {
     "no": False,
     "0": False,
 }
-_STEP_FIELDS = {"label": str, "check": bool, "delay": float, "timeout": float, "threshold": float}
+_STEP_FIELDS = {
+    "label": str,
+    "check": bool,
+    "until_next": bool,
+    "delay": float,
+    "timeout": float,
+    "threshold": float,
+}
 
 
 def _value(kind: type, text: str):

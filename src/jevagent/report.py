@@ -6,7 +6,7 @@ import html
 import os
 from pathlib import Path
 
-from jevagent.flow import Flow, Step
+from jevagent.flow import RETRY_TAPS, Flow, Step
 from jevagent.player import STATUS, load_runs
 from jevagent.vision import ANCHOR_SIDE
 
@@ -78,11 +78,14 @@ def _overlay(step: Step, size: list[int]) -> str:
 
 
 def _settings(step: Step, index: int) -> str:
-    check = (
-        f'<span class="tag ok">检查画面 ≥{step.threshold_value:.2f}</span>'
-        if step.check
-        else f'<span class="tag warn">不检查画面</span> <span class="small">{html.escape(step.note)}</span>'
-    )
+    if step.check:
+        check = f'<span class="tag ok">检查画面 ≥{step.threshold_value:.2f}</span>'
+    elif step.until_next:
+        check = f'<span class="tag ok">点到下一画面出现</span> <span class="small">空白处，最多点 {RETRY_TAPS} 次</span>'
+    else:
+        check = (
+            f'<span class="tag warn">不检查画面</span> <span class="small">{html.escape(step.note)}</span>'
+        )
     wait = f"先等 {step.delay_for(index):.1f}s"
     if step.check:
         wait += f"，最多等画面 {step.timeout_for(index):.0f}s"

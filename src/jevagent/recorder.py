@@ -171,7 +171,9 @@ class Recorder:
         if index > 1 and gap < QUICK_FOLLOW_UP:
             step.check, step.note = False, f"距上一步仅 {gap:.1f}s，按录制节奏执行"
         elif make_anchor(frame, points[0][1:]).texture < MIN_TEXTURE:
-            step.check, step.note = False, "触点周围几乎是纯色，无法作为画面依据"
+            # Usually "tap anywhere to continue/close": keep tapping until the next screen shows.
+            step.check, step.until_next = False, True
+            step.note = "点在空白处：回放时点到下一画面出现为止"
         save_jpeg(self.folder / step.image, frame)
         self.steps.append(step)
         flag = "" if step.check else f"  [不检查画面：{step.note}]"

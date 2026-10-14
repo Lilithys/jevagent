@@ -70,10 +70,12 @@ class FakePhone:
         clock: FakeClock,
         routes: dict[tuple[str, int], tuple[str, float]] | None = None,
         shifts: dict[str, tuple[int, int]] | None = None,
+        ignore: dict[str, int] | None = None,
     ) -> None:
         self.screens, self.screen, self.clock = screens, start, clock
         self.routes = routes or {}
         self.shifts = shifts or {}
+        self.ignore = dict(ignore or {})  # screen -> taps it swallows (e.g. a reward still animating)
         self.size = (W, H)
         self.gestures: list[list[list[float]]] = []
         self._pending: tuple[float, str] | None = None
@@ -94,6 +96,10 @@ class FakePhone:
     def gesture(self, points, stop=None) -> None:
         self._settle()
         self.gestures.append([list(p) for p in points])
+        if self.ignore.get(self.screen, 0) > 0:
+            self.ignore[self.screen] -= 1
+            self.clock.sleep(points[-1][0])
+            return
         x, y = points[0][1:]
         for (screen, index), (target, loading) in self.routes.items():
             if screen != self.screen:
