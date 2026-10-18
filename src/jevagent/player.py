@@ -295,7 +295,9 @@ class Player:
             left = left or not at_goal
             key: object = "goal" if at_goal and left else None
             match = None
-            if key is None:
+            # Nothing reacts while the goal is showing: a handler may check a background the goal
+            # screen shares (the chest scene behind both the summary and the panel).
+            if not at_goal:
                 for k, anchor in handlers:
                     candidate = find_anchor(work, anchor)
                     if candidate.score >= steps[k].threshold_value:

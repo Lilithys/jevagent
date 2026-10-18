@@ -22,14 +22,17 @@ LAYOUT = {
 }
 
 
-def draw(name):
-    seed, buttons = LAYOUT[name]
-    image = make_screen("none", seed)
+def paint(image, buttons):
     for x, y, w, h, colour, text in buttons:
         cv2.rectangle(image, (x, y), (x + w, y + h), colour, -1)
         cv2.rectangle(image, (x + 6, y + 6), (x + w - 6, y + h - 6), (255, 255, 255), 4)
         cv2.putText(image, text, (x + 18, y + h // 2 + 14), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (20, 20, 20), 4)
     return image
+
+
+def draw(name):
+    seed, buttons = LAYOUT[name]
+    return paint(make_screen("none", seed), buttons)
 
 
 SCREENS = {name: draw(name) for name in LAYOUT}
@@ -174,3 +177,27 @@ def test_a_summary_look_alike_during_the_opening_does_not_end_the_chest(tmp_path
     assert result.status == "success", result.reason
     assert [g[0] for g in game.gestures][:2] == ["panel", "panel"]  # one harmless tap during the animation
     assert "board" in [g[0] for g in game.gestures]  # the gold card was still handled
+
+
+SCENE = (200, 760, 260, 150, (60, 90, 60), "TREE")  # the chest scene: behind the panel and the summary
+
+
+class SceneGame(ChestGame):
+    def frame(self):
+        image = super().frame()
+        return paint(image, [SCENE]) if self.screen in ("panel", "summary") else image
+
+
+def test_react_steps_wait_while_the_goal_screen_shows(tmp_path):
+    # The summary is recognised by the scene around it (its rewards vary), which the panel shares.
+    # Reacting on the panel, while the chest is still opening, would tap the panel.
+    flow, folder = chest_flow(tmp_path)
+    summary = flow.steps[5]
+    cv2.imwrite(str(folder / summary.image), paint(SCREENS["summary"].copy(), [SCENE]))
+    cv2.imwrite(str(folder / flow.end_image), paint(SCREENS["panel"].copy(), [SCENE]))
+    summary.look = list(centre(SCENE))
+    clock = FakeClock()
+    game = SceneGame(clock, gold=False)
+    result = play(flow, folder, game, clock)
+    assert result.status == "success", result.reason
+    assert [g[0] for g in game.gestures] == ["panel", "summary"]

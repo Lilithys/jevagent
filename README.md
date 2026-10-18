@@ -80,7 +80,8 @@ uv run jevagent edit 名称 --set end_check=off      # 不检查结束画面
 uv run jevagent edit 名称 --set end_look=1775,1052  # 结束时只看这一处（3D 地图每次取景不同时，看固定按钮）
 uv run jevagent edit 名称 --set 2.optional=on      # 可选步骤：画面出现就做，下一步的画面先出现并停留 3 秒就跳过
 uv run jevagent edit 名称 --set 2.react=on         # 应对步骤：连续几个应对步骤组成一段，哪个画面出现就做哪个（可多次），
-                                                   # 直到下一步的画面出现；不检查画面的应对步骤只在卡住时轻点（如金卡过场）
+                                                   # 直到下一步的画面出现（它在屏幕上时一律不应对）；
+                                                   # 不检查画面的应对步骤只在卡住时轻点（如金卡过场）
 ```
 
 只想改后半段时不用整段重录：`uv run jevagent record 名称 --from 7` 保留前 6 步，从第 7 步开始重录并替换后面的步骤和结束画面（手机先停在第 6 步刚做完时的画面）。
