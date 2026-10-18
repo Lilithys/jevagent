@@ -1,0 +1,52 @@
+[project]
+name = "jevagent"
+version = "0.2.0"
+description = "Learn fixed game routines from your own taps on an Android phone, then replay them with visual checks"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    # Same Airtest fork and commit that hawarma verified on the HONOR phone
+    # (MINICAP_APK screenshots, MAXTOUCH input). Upgrade both projects together.
+    "airtest @ git+https://github.com/ChanningWang2018/Airtest.git@f1cf57bca8ccde388c4f112036ad1176dd175027",
+]
+
+[project.scripts]
+jevagent = "jevagent.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.12"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# The Airtest fork has invalid escape sequences in regex strings; harmless.
+filterwarnings = ["ignore::SyntaxWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+# The fork's setup.py emits host-dependent Windows requirements. Declare its
+# actual dependencies with platform markers so the same lock works on macOS
+# (copied from hawarma/pyproject.toml).
+[[tool.uv.dependency-metadata]]
+name = "airtest"
+version = "1.3.6"
+requires-dist = [
+    "Jinja2>=2.8", "Pillow>=3.4.0", "requests>=2.11.1", "six>=1.9.0,<=1.16.0",
+    "mss==6.1.0", "numpy<2.0", "opencv-contrib-python>=4.4.0.46,<=4.6.0.66",
+    "facebook-wda>=1.3.3", "pywinauto==0.6.3; sys_platform == 'win32'",
+    "pywin32; sys_platform == 'win32'", "filelock", "ffmpeg-python", "tidevice",
+    "psutil", "packaging",
+]
