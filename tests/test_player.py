@@ -9,8 +9,8 @@ from fakes import PLAN, ROUTES, FakeClock, FakePhone, centre, make_screen
 from jevagent.player import Player, load_runs, new_run_dir
 
 
-def play(flow, folder, phone, clock, **kwargs):
-    player = Player(phone, flow, folder, clock=clock, sleep=clock.sleep, log=lambda s: None, **kwargs)
+def play(flow, folder, phone, clock, log=lambda s: None, **kwargs):
+    player = Player(phone, flow, folder, clock=clock, sleep=clock.sleep, log=log, **kwargs)
     run_dir = new_run_dir(folder)
     return player.run(run_dir), run_dir
 
@@ -167,8 +167,10 @@ def test_checked_tap_until_next_retaps_only_while_its_screen_is_still_there(reco
     flow.steps[2].until_next = True  # checked OK button + tap until the shop shows
     clock = FakeClock()
     phone = FakePhone(screens, "home", clock, ROUTES, ignore={"popup": 1})  # first tap swallowed
-    result, _ = play(flow, folder, phone, clock)
+    logs = []
+    result, _ = play(flow, folder, phone, clock, log=logs.append)
     assert result.status == "success" and result.steps[2].taps == 2
+    assert "点了 2 次" in logs[2]
 
     clock = FakeClock()
     unexpected = {**ROUTES, ("popup", 0): ("home", 0.3)}  # OK leads somewhere the flow did not expect

@@ -274,8 +274,10 @@ def cmd_loop(args: argparse.Namespace) -> int:
     from jevagent.routine import run_routine
 
     folders = [flow_dir(name) for name in args.names]
+    react_steps = {}
     for folder in folders:
-        flows.load(folder)  # fail early on a missing flow, before connecting
+        flow = flows.load(folder)  # fail early on a missing flow, before connecting
+        react_steps[folder.name] = {i + 1 for i, step in enumerate(flow.steps) if step.react}
     unknown = set(args.repeat or []) - {folder.name for folder in folders}
     if unknown:
         print(f"--repeat 的流程不在循环里: {', '.join(sorted(unknown))}")
@@ -319,9 +321,14 @@ def cmd_loop(args: argparse.Namespace) -> int:
             mark = "✓" if runs and ok == len(runs) else ("✗" if runs else "—")
             parts.append(f"{name}{f' ×{len(runs)}' if len(runs) > 1 else ''} {mark}")
         print(f"  第 {number} 轮：" + " · ".join(parts))
-    # A normal chest only reacts once (closing its reward summary); more than one response means a
-    # cutscene was handled, e.g. a gold card. Every response's screenshot stays in its run folder.
-    special = [seg for seg in segments if len(seg.result.shots) > 1]
+    # A normal chest only closes its reward summary (often twice: once while the rewards still fly
+    # in); responses from more than one react step mean a cutscene was handled, e.g. a gold card.
+    # Every response's screenshot stays in its run folder.
+    special = [
+        seg
+        for seg in segments
+        if len({s.step for s in seg.result.steps if s.step in react_steps[seg.flow]}) > 1
+    ]
     if special:
         print(f"\n有过场动画（如金卡）的 {len(special)} 次，截图在：")
         for seg in special:

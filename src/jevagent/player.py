@@ -403,6 +403,8 @@ class Player:
                     break
                 if step.check:
                     check = f"画面匹配 {outcome.score:.2f}"
+                    if outcome.taps > 1:
+                        check += f"，点了 {outcome.taps} 次才进入下一画面"
                 elif step.until_next:
                     check = f"空白处，点了 {outcome.taps} 次进入下一画面"
                 else:
